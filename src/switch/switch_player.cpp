@@ -1937,6 +1937,11 @@ private:
         mpv_set_option_string(mpv_, "ytdl", "no");
         mpv_set_option_string(mpv_, "tls-verify", "no");
         mpv_set_option_string(mpv_, "access-references", "yes");
+        if (!request_.local_audio_path.empty()) {
+            // -append takes one path; plain audio-files would split "sdmc:/" at the colon.
+            mpv_set_option_string(mpv_, "audio-files-append", request_.local_audio_path.c_str());
+            logf("player: local audio file=%s", request_.local_audio_path.c_str());
+        }
         if (!active_local_media_path_.empty()) {
             mpv_set_option_string(mpv_, "load-unsafe-playlists", "yes");
             mpv_set_option_string(
@@ -2318,7 +2323,7 @@ private:
 
     // Cycles Best -> 1080p -> 720p -> 320p and restarts at the current position.
     void request_quality_change(bool& running) {
-        if (!first_frame_rendered_) {
+        if (!first_frame_rendered_ || !YouTubeResolver::is_youtube_url(request_.url)) {
             return;
         }
         const int current = request_.quality_override >= 0

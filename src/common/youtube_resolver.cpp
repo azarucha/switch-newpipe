@@ -668,13 +668,13 @@ std::optional<SelectedHlsPlayback> pick_preferred_hls_playback(
 }
 
 
-std::optional<ResolvedPlayback> resolve_visionos_hls_playback(
+std::optional<SelectedHlsPlayback> fetch_visionos_hls_selection(
     HttpClient* client,
     const std::string& video_id,
     const std::string& visitor_data,
-    int preferred_height,
+    int requested_height,
+    std::string& hls_manifest_url,
     std::string& error_message) {
-    const int requested_height = preferred_height;
     const auto root = fetch_player_response(
         client,
         video_id,
@@ -702,7 +702,7 @@ std::optional<ResolvedPlayback> resolve_visionos_hls_playback(
     }
 
     const json streaming = root->value("streamingData", json::object());
-    const std::string hls_manifest_url = get_string(streaming, "hlsManifestUrl");
+    hls_manifest_url = get_string(streaming, "hlsManifestUrl");
     if (hls_manifest_url.empty()) {
         error_message = "visionOS HLS manifest unavailable";
         return std::nullopt;
@@ -718,6 +718,22 @@ std::optional<ResolvedPlayback> resolve_visionos_hls_playback(
         hls_manifest_url, *master_manifest, requested_height);
     if (!selected_playback.has_value()) {
         error_message = std::to_string(requested_height) + "p HLS variant not found";
+        return std::nullopt;
+    }
+    return selected_playback;
+}
+
+std::optional<ResolvedPlayback> resolve_visionos_hls_playback(
+    HttpClient* client,
+    const std::string& video_id,
+    const std::string& visitor_data,
+    int preferred_height,
+    std::string& error_message) {
+    const int requested_height = preferred_height;
+    std::string hls_manifest_url;
+    const auto selected_playback = fetch_visionos_hls_selection(
+        client, video_id, visitor_data, requested_height, hls_manifest_url, error_message);
+    if (!selected_playback.has_value()) {
         return std::nullopt;
     }
 
@@ -739,6 +755,28 @@ std::optional<ResolvedPlayback> resolve_visionos_hls_playback(
          result.hls_bitrate,
          selected_playback->audio_url.empty() ? "none" : "yes");
     return result;
+}
+
+std::vector<std::string> fetch_media_playlist_segments(
+    HttpClient* client,
+    const std::string& playlist_url) {
+    std::vector<std::string> segments;
+    const auto body = client->get(playlist_url);
+    if (!body.has_value()) {
+        return segments;
+    }
+
+    std::stringstream stream(*body);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (!line.empty() && line[0] != '#') {
+            segments.push_back(absolutize_url(playlist_url, line));
+        }
+    }
+    return segments;
 }
 
 void report_status(const ResolverStatusCallback& callback, const std::string& title, const std::string& detail) {
@@ -796,6 +834,48 @@ std::optional<ResolvedPlayback> YouTubeResolver::resolve(
         apply_throttle_transform(*result);
     }
     return result;
+}
+
+std::optional<DownloadSource> YouTubeResolver::resolve_download(
+    const std::string& url,
+    int preferred_height,
+    std::string& error_message) {
+    const auto video_id = extract_video_id(url);
+    if (!video_id.has_value()) {
+        error_message = "not a supported YouTube URL";
+        return std::nullopt;
+    }
+
+    const std::string visitor_data = fetch_web_visitor_data(client_, error_message);
+    if (visitor_data.empty()) {
+        return std::nullopt;
+    }
+
+    std::string hls_manifest_url;
+    const auto selected = fetch_visionos_hls_selection(
+        client_, *video_id, visitor_data, preferred_height, hls_manifest_url, error_message);
+    if (!selected.has_value()) {
+        return std::nullopt;
+    }
+
+    DownloadSource source;
+    source.height = selected->selected_height > 0 ? selected->selected_height : preferred_height;
+    source.audio_language = selected->audio_language;
+    source.video_segments = fetch_media_playlist_segments(client_, selected->video_url);
+    if (!selected->audio_url.empty()) {
+        source.audio_segments = fetch_media_playlist_segments(client_, selected->audio_url);
+    }
+    if (source.video_segments.empty()) {
+        error_message = "HLS video playlist download failed";
+        return std::nullopt;
+    }
+
+    logf("youtube: download source video=%s height=%d video_segments=%zu audio_segments=%zu",
+         video_id->c_str(),
+         source.height,
+         source.video_segments.size(),
+         source.audio_segments.size());
+    return source;
 }
 
 std::optional<ResolvedPlayback> YouTubeResolver::resolve_internal(

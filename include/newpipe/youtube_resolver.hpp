@@ -3,6 +3,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "newpipe/http_client.hpp"
 #include "newpipe/throttling_decrypter.hpp"
@@ -40,6 +41,15 @@ struct ResolvedPlayback {
     bool is_live = false;
 };
 
+// Segment lists of one HLS variant, for downloading a video to the SD card.
+// Video and audio are separate MPEG-TS streams.
+struct DownloadSource {
+    int height = 0;
+    std::string audio_language;
+    std::vector<std::string> video_segments;
+    std::vector<std::string> audio_segments;
+};
+
 using ResolverStatusCallback = std::function<void(const std::string&, const std::string&)>;
 
 class YouTubeResolver {
@@ -53,6 +63,11 @@ public:
 
     // Overrides the quality from settings for this resolver only.
     void set_quality_override(PlaybackQualityMode mode) { quality_override_ = mode; }
+
+    std::optional<DownloadSource> resolve_download(
+        const std::string& url,
+        int preferred_height,
+        std::string& error_message);
 
     static bool is_youtube_url(const std::string& url);
     static std::optional<std::string> extract_video_id(const std::string& url);

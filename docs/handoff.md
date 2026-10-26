@@ -1,5 +1,20 @@
 # Handoff
 
+## 다운로드 (2026-10-27)
+
+- 상세 `LB` 메뉴 → `다운로드`. `DownloadManager`(백그라운드 스레드 1개, detach)가
+  visionOS HLS의 선택 variant 미디어 플레이리스트를 받아 TS 세그먼트를 그대로 이어 붙인다.
+  비디오와 오디오가 별도 rendition이라 `<id>.video.ts`, `<id>.audio.ts` 두 파일이 생긴다.
+  2026-10-27 호스트에서 세그먼트가 헤더 없이 GET으로 받아지는 것(첫/마지막 포함)을 확인
+- 목록은 `sdmc:/switch/switch_newpipe_downloads.json`. 앱 종료로 끊긴 항목은 다음 실행 때
+  실패로 보이고 `A`로 처음부터 다시 받는다 (이어받기 없음)
+- 재생은 `PlaybackRequest::local_audio_path` → mpv `audio-files-append`.
+  `audio-files`는 경로 목록을 `:`로 나눠서 `sdmc:/`가 깨진다
+- 라이브러리 `LB` 순환: 기록 → 즐겨찾기 → 다운로드. 다운로드 섹션 `Y`는 삭제(확인 대화상자)
+- 진행률은 자동 갱신하지 않는다 (`X`). 워커는 borealis를 건드리지 않는다
+  (플레이어 실행 중에는 borealis가 내려가 있기 때문)
+- 실기 동작은 아직 확인하지 않았다
+
 ## 코드 로그인 / 화질 전환 / 페이지네이션 (2026-10-27)
 
 - 코드 로그인 (TV device flow)

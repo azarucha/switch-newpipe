@@ -83,6 +83,16 @@ Supported formats: raw `Cookie` header, JSON `{"cookie_header":"..."}`, or Netsc
 
 Once logged in, your **Subscriptions** tab and **personalized Home recommendations** will be available.
 
+## Downloads
+
+Open a video, press `LB` and choose **Download**. The video is saved in the quality
+set under Settings (video and audio as two files in `sdmc:/switch/switch_newpipe_downloads/`)
+and keeps downloading in the background, also while you watch something else.
+
+Find it under **Library**: `LB` switches History → Favorites → Downloads. `A` plays a
+finished download offline, `Y` deletes it, `X` refreshes the progress. A download cut
+off by closing the app shows as failed; `A` starts it again.
+
 ## Playback Quality
 
 Configure in **Settings** tab:

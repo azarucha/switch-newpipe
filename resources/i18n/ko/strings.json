@@ -93,7 +93,19 @@
     "controls": "A 재생 • Y 상세 • X 새로고침 • LB 섹션 전환 • RB 비우기",
     "clear_failed": "라이브러리 초기화 실패",
     "favorites_cleared": "즐겨찾기를 비웠습니다",
-    "history_cleared": "최근 시청을 비웠습니다"
+    "history_cleared": "최근 시청을 비웠습니다",
+    "downloads": "다운로드",
+    "downloads_empty": "다운로드한 영상이 여기에 표시됩니다.\n영상 상세에서 LB를 누르고 다운로드를 선택하세요.\nLB로 시청 기록으로 전환합니다.",
+    "downloads_controls": "A 재생 • Y 삭제 • X 진행률 새로고침 • LB 섹션 전환",
+    "downloads_clear_hint": "영상에서 Y를 눌러 삭제하세요",
+    "download_done": "{}p · 오프라인",
+    "download_progress": "다운로드 중 {}%",
+    "download_queued": "대기 중",
+    "download_failed": "실패 · A로 다시 시도",
+    "download_retry": "다운로드를 다시 시작했습니다",
+    "download_not_ready": "아직 다운로드 중입니다",
+    "download_delete": "삭제",
+    "download_delete_confirm": "이 다운로드를 삭제할까요?\n\n{}"
   },
   "settings": {
     "reset_action": "기본값",
@@ -187,7 +199,10 @@
     "comments_load_failed": "댓글을 불러오지 못했습니다",
     "favorite_save_failed": "즐겨찾기 저장 실패",
     "favorite_added": "즐겨찾기에 추가했습니다",
-    "favorite_removed": "즐겨찾기에서 제거했습니다"
+    "favorite_removed": "즐겨찾기에서 제거했습니다",
+    "download_action": "다운로드",
+    "download_started": "다운로드를 시작했습니다. 라이브러리 > 다운로드에서 확인하세요.",
+    "download_failed": "다운로드를 시작하지 못했습니다"
   },
   "feed": {
     "subtitle": "A 재생 • Y 상세 • B 뒤로",

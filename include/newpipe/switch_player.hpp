@@ -13,6 +13,8 @@ struct PlaybackRequest {
     // Set when the player restarts itself, e.g. after a quality change.
     double start_seconds = 0.0;
     int quality_override = -1;  // PlaybackQualityMode, -1 = use settings
+    // Downloaded videos keep audio in its own file next to the video.
+    std::string local_audio_path;
 };
 
 // When the user switches quality mid-video the player stops and fills

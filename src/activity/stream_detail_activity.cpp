@@ -2,7 +2,10 @@
 #include "activity/stream_detail_activity.hpp"
 
 #include "activity/stream_feed_activity.hpp"
+#include "newpipe/download_manager.hpp"
 #include "newpipe/i18n.hpp"
+#include "newpipe/settings_store.hpp"
+#include "newpipe/youtube_resolver.hpp"
 #include "newpipe/library_store.hpp"
 #include "newpipe/log.hpp"
 #include "newpipe/playback_helper.hpp"
@@ -184,9 +187,28 @@ void StreamDetailActivity::openExtrasMenu() {
         dialog->close();
         this->openComments();
     });
-    dialog->addButton(newpipe::tr("common/close"), [dialog]() { dialog->close(); });
+    dialog->addButton(newpipe::tr("detail/download_action"), [this, dialog]() {
+        dialog->close();
+        this->startDownload();
+    });
     dialog->setCancelable(true);
     dialog->open();
+}
+
+void StreamDetailActivity::startDownload() {
+    newpipe::StreamItem item = this->item_;
+    if (item.id.empty()) {
+        item.id = newpipe::YouTubeResolver::extract_video_id(item.url).value_or("");
+    }
+
+    const auto quality = newpipe::SettingsStore::instance().settings().playback_quality;
+    std::string error;
+    if (!newpipe::DownloadManager::instance().enqueue(
+            item, newpipe::preferred_height_for_quality(quality), &error)) {
+        brls::Application::notify(error.empty() ? newpipe::tr("detail/download_failed") : error);
+        return;
+    }
+    brls::Application::notify(newpipe::tr("detail/download_started"));
 }
 
 void StreamDetailActivity::openPlaylistFeed() {

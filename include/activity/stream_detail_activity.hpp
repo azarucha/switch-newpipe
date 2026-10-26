@@ -24,6 +24,7 @@ private:
     void openExtrasMenu();
     void openPlaylistFeed();
     void openComments();
+    void startDownload();
     void toggleFavorite();
 
     newpipe::StreamItem item_;
