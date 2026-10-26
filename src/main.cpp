@@ -144,12 +144,17 @@ int main(int argc, char* argv[]) {
             }
 
             newpipe::logf("main: launch player title=%s", pending_playback->title.c_str());
-            std::string playback_error;
-            if (!newpipe::run_switch_player(*pending_playback, playback_error)) {
-                newpipe::logf("main: player failed error=%s", playback_error.c_str());
-                newpipe::set_last_playback_error(playback_error.empty() ? "unknown error" : playback_error);
-            } else {
-                newpipe::log_line("main: player finished");
+            std::optional<newpipe::PlaybackRequest> next_playback = pending_playback;
+            while (next_playback.has_value()) {
+                const newpipe::PlaybackRequest current = *next_playback;
+                next_playback.reset();
+                std::string playback_error;
+                if (!newpipe::run_switch_player(current, playback_error, &next_playback)) {
+                    newpipe::logf("main: player failed error=%s", playback_error.c_str());
+                    newpipe::set_last_playback_error(playback_error.empty() ? "unknown error" : playback_error);
+                    break;
+                }
+                newpipe::log_line(next_playback.has_value() ? "main: player restart" : "main: player finished");
             }
             continue;
 #else

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,7 @@
 class SubscriptionsTab : public AttachedView {
 public:
     SubscriptionsTab();
+    ~SubscriptionsTab() override;
 
     void onCreate() override;
 
@@ -25,6 +27,7 @@ private:
     void showSignedOutState();
     void openSessionDialog();
     void handleManualCookieInput(const std::string& text);
+    void startDeviceLogin();
     bool allowInitialInput() const;
     void playStream(const newpipe::StreamItem& item);
     void openStream(const newpipe::StreamItem& item);
@@ -38,4 +41,7 @@ private:
     newpipe::YouTubeCatalogService service_;
     std::vector<newpipe::StreamItem> items_;
     std::atomic<bool> interactionReady_{false};
+    // Shared with the device-login polling thread; set when the tab goes away
+    // or the login dialog is dismissed.
+    std::shared_ptr<std::atomic<bool>> deviceLoginCancelled_;
 };

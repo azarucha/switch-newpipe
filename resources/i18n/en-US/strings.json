@@ -29,7 +29,9 @@
     "none": "None",
     "refresh": "Refresh",
     "service_init_failed": "Service init failed: {}",
-    "count_with_title": "{} • {} items"
+    "count_with_title": "{} • {} items",
+    "load_more": "Load more",
+    "no_more": "Nothing more to load"
   },
   "home": {
     "category_action": "Category",
@@ -70,7 +72,15 @@
       "logout_failed": "Logout failed",
       "empty_input": "Ignored empty input",
       "save_cookie_done": "Saved cookie session",
-      "save_cookie_failed": "Failed to save cookie session"
+      "save_cookie_failed": "Failed to save cookie session",
+      "device_login": "Sign in with code"
+    },
+    "device_login": {
+      "requesting": "Requesting sign-in code...",
+      "body": "On your phone or PC, open\n{}\n\nand enter this code:\n\n{}\n\nThis window closes by itself once you have confirmed.",
+      "done": "Signed in to YouTube",
+      "failed": "Sign-in failed",
+      "expired": "The sign-in code expired. Please try again."
     }
   },
   "library": {
@@ -180,7 +190,8 @@
     "favorite_removed": "Removed from favorites"
   },
   "feed": {
-    "subtitle": "A Play • Y Details • B Back"
+    "subtitle": "A Play • Y Details • B Back",
+    "subtitle_more": "A Play • Y Details • X Load more • B Back"
   },
   "comments": {
     "title": "Comments",
@@ -188,7 +199,8 @@
     "verified": "Verified",
     "unknown_author": "Unknown user",
     "likes": "Likes {}",
-    "replies": "Replies {}"
+    "replies": "Replies {}",
+    "subtitle_more": "X Load more • B Back"
   },
   "player": {
     "status": {
@@ -197,7 +209,7 @@
       "playing": "PLAYING",
       "volume": "VOL"
     },
-    "osd_controls": "A PAUSE  B BACK  XY OSD  UPDN VOL  PAD 10S  LBRB 60S",
+    "osd_controls": "A PAUSE B BACK UPDN VOL PAD 10S LBRB 60S - QUALITY",
     "osd": {
       "auto": "OSD AUTO",
       "locked": "OSD LOCKED",

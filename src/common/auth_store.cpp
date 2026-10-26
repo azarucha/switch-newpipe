@@ -10,6 +10,7 @@
 #include <iterator>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -198,6 +199,7 @@ std::optional<AuthSession> parse_auth_source(
     std::string* error_message) {
     std::string cookie_header;
     std::string display_name;
+    AuthSession oauth;
     const std::string trimmed = trim(raw);
     if (trimmed.empty()) {
         if (error_message) {
@@ -225,7 +227,19 @@ std::optional<AuthSession> parse_auth_source(
             } else if (root.contains("account_name") && root.at("account_name").is_string()) {
                 display_name = root.at("account_name").get<std::string>();
             }
+
+            oauth.oauth_access_token = root.value("oauth_access_token", std::string());
+            oauth.oauth_refresh_token = root.value("oauth_refresh_token", std::string());
+            oauth.oauth_expires_at = root.value("oauth_expires_at", 0LL);
         }
+    }
+
+    // A saved device login carries no cookies; it is complete on its own.
+    if (cookie_header.empty() && oauth.has_oauth()) {
+        oauth.source_label = source_label;
+        oauth.source_path = source_path;
+        oauth.display_name = display_name;
+        return oauth;
     }
 
     if (cookie_header.empty()) {
@@ -265,6 +279,9 @@ std::optional<AuthSession> parse_auth_source(
     session.source_label = source_label;
     session.source_path = source_path;
     session.display_name = display_name;
+    session.oauth_access_token = oauth.oauth_access_token;
+    session.oauth_refresh_token = oauth.oauth_refresh_token;
+    session.oauth_expires_at = oauth.oauth_expires_at;
     return session;
 }
 
@@ -285,6 +302,43 @@ std::string sha1_hex(const std::string& input) {
         stream << std::setw(2) << static_cast<int>(byte);
     }
     return stream.str();
+}
+
+constexpr const char* kTvOAuthClientId =
+    "861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68.apps.googleusercontent.com";
+constexpr const char* kTvOAuthClientSecret = "SboVhoG9s0rNafixCSGGKXAT";
+constexpr const char* kTvOAuthScope =
+    "http://gdata.youtube.com https://www.googleapis.com/auth/youtube";
+constexpr const char* kDeviceCodeUrl = "https://www.youtube.com/o/oauth2/device/code";
+constexpr const char* kTokenUrl = "https://www.youtube.com/o/oauth2/token";
+
+long long now_seconds() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+std::string random_hex(size_t length) {
+    static const char* digits = "0123456789abcdef";
+    std::random_device device;
+    std::string out;
+    out.reserve(length);
+    for (size_t i = 0; i < length; ++i) {
+        out.push_back(digits[device() % 16]);
+    }
+    return out;
+}
+
+std::optional<json> post_oauth_json(HttpClient& client, const char* url, const json& body) {
+    const auto response = client.post(url, body.dump(), {{"Content-Type", "application/json"}});
+    if (!response.has_value() || response->empty()) {
+        return std::nullopt;
+    }
+    json root = json::parse(*response, nullptr, false);
+    if (root.is_discarded() || !root.is_object()) {
+        return std::nullopt;
+    }
+    return root;
 }
 
 std::string build_sapisid_hash(const std::string& sapisid, const std::string& origin) {
@@ -477,7 +531,7 @@ std::vector<HttpHeader> AuthStore::build_youtube_headers(
         session_copy = this->session_;
     }
 
-    if (!session_copy.authenticated()) {
+    if (!session_copy.has_cookie()) {
         if (error_message) {
             *error_message = "로그인 세션이 없습니다";
         }
@@ -511,6 +565,9 @@ bool AuthStore::persist_session(std::string* error_message) {
         {"source_label", session_copy.source_label},
         {"source_path", session_copy.source_path},
         {"display_name", session_copy.display_name},
+        {"oauth_access_token", session_copy.oauth_access_token},
+        {"oauth_refresh_token", session_copy.oauth_refresh_token},
+        {"oauth_expires_at", session_copy.oauth_expires_at},
     };
 
     if (!write_text_file(default_auth_session_path(), root.dump(2))) {
@@ -524,6 +581,144 @@ bool AuthStore::persist_session(std::string* error_message) {
         error_message->clear();
     }
     return true;
+}
+
+bool AuthStore::has_oauth_session() const {
+    std::lock_guard<std::mutex> lock(this->mutex_);
+    return this->session_.has_oauth();
+}
+
+std::optional<DeviceLoginCode> AuthStore::start_device_login(
+    HttpClient& client,
+    std::string* error_message) {
+    const json body = {
+        {"client_id", kTvOAuthClientId},
+        {"scope", kTvOAuthScope},
+        {"device_id", random_hex(32)},
+        {"device_model", "ytlr::"},
+    };
+    const auto root = post_oauth_json(client, kDeviceCodeUrl, body);
+    if (!root.has_value() || !root->contains("device_code") || !root->contains("user_code")) {
+        if (error_message) {
+            *error_message = "로그인 코드 요청 실패";
+        }
+        return std::nullopt;
+    }
+
+    DeviceLoginCode code;
+    code.device_code = root->value("device_code", std::string());
+    code.user_code = root->value("user_code", std::string());
+    code.verification_url =
+        root->value("verification_url", std::string("https://www.google.com/device"));
+    code.interval_seconds = std::max(1, root->value("interval", 5));
+    code.expires_in_seconds = root->value("expires_in", 1800);
+    logf("auth: device login started url=%s", code.verification_url.c_str());
+    if (error_message) {
+        error_message->clear();
+    }
+    return code;
+}
+
+DeviceLoginStatus AuthStore::poll_device_login(
+    HttpClient& client,
+    const std::string& device_code,
+    std::string* error_message) {
+    const json body = {
+        {"client_id", kTvOAuthClientId},
+        {"client_secret", kTvOAuthClientSecret},
+        {"code", device_code},
+        {"grant_type", "http://oauth.net/grant_type/device/1.0"},
+    };
+    const auto root = post_oauth_json(client, kTokenUrl, body);
+    if (!root.has_value()) {
+        // Network hiccup: keep polling, the code stays valid.
+        return DeviceLoginStatus::Pending;
+    }
+
+    if (!root->contains("access_token")) {
+        const std::string error = root->value("error", std::string());
+        if (error == "authorization_pending" || error == "slow_down") {
+            return DeviceLoginStatus::Pending;
+        }
+        logf("auth: device login failed error=%s", error.c_str());
+        if (error_message) {
+            if (error == "expired_token") {
+                *error_message = "로그인 코드가 만료되었습니다";
+            } else if (error == "access_denied") {
+                *error_message = "로그인이 거부되었습니다";
+            } else {
+                *error_message = "로그인 실패: " + error;
+            }
+        }
+        return DeviceLoginStatus::Failed;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(this->mutex_);
+        AuthSession session;
+        session.oauth_access_token = root->value("access_token", std::string());
+        session.oauth_refresh_token = root->value("refresh_token", std::string());
+        session.oauth_expires_at = now_seconds() + root->value("expires_in", 3600);
+        session.source_label = "device login";
+        this->session_ = session;
+        this->loaded_ = true;
+    }
+
+    if (!this->persist_session(error_message)) {
+        return DeviceLoginStatus::Failed;
+    }
+    log_line("auth: device login succeeded");
+    if (error_message) {
+        error_message->clear();
+    }
+    return DeviceLoginStatus::Success;
+}
+
+std::optional<std::string> AuthStore::oauth_access_token(
+    HttpClient& client,
+    std::string* error_message) {
+    std::string refresh_token;
+    {
+        std::lock_guard<std::mutex> lock(this->mutex_);
+        if (!this->session_.has_oauth()) {
+            if (error_message) {
+                *error_message = "로그인 세션이 없습니다";
+            }
+            return std::nullopt;
+        }
+        if (!this->session_.oauth_access_token.empty() &&
+            this->session_.oauth_expires_at - 60 > now_seconds()) {
+            return this->session_.oauth_access_token;
+        }
+        refresh_token = this->session_.oauth_refresh_token;
+    }
+
+    const json body = {
+        {"client_id", kTvOAuthClientId},
+        {"client_secret", kTvOAuthClientSecret},
+        {"refresh_token", refresh_token},
+        {"grant_type", "refresh_token"},
+    };
+    const auto root = post_oauth_json(client, kTokenUrl, body);
+    if (!root.has_value() || !root->contains("access_token")) {
+        const std::string error =
+            root.has_value() ? root->value("error", std::string()) : std::string("network");
+        logf("auth: token refresh failed error=%s", error.c_str());
+        if (error_message) {
+            *error_message = "로그인 토큰 갱신 실패: " + error;
+        }
+        return std::nullopt;
+    }
+
+    const std::string access_token = root->value("access_token", std::string());
+    {
+        std::lock_guard<std::mutex> lock(this->mutex_);
+        this->session_.oauth_access_token = access_token;
+        this->session_.oauth_expires_at = now_seconds() + root->value("expires_in", 3600);
+    }
+    this->persist_session(nullptr);
+    log_line("auth: token refreshed");
+    return access_token;
 }
 
 }  // namespace newpipe

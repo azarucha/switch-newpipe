@@ -1,5 +1,28 @@
 # Handoff
 
+## 코드 로그인 / 화질 전환 / 페이지네이션 (2026-10-27)
+
+- 코드 로그인 (TV device flow)
+  - 구독 탭 `RB` → `코드로 로그인`. `youtube.com/o/oauth2/device/code`로 코드를 받고
+    사용자가 google.com/device에서 승인하면 `o/oauth2/token`을 폴링해서 토큰을 저장한다.
+    YouTube TV 클라이언트 ID를 쓴다.
+  - 세션 파일에 `oauth_access_token`, `oauth_refresh_token`, `oauth_expires_at`가 추가됐다.
+    쿠키 없이 refresh token만 있어도 로그인 상태다. 만료 60초 전에 자동 갱신한다.
+  - Bearer 토큰은 WEB 클라이언트에서 400이 난다. TVHTML5에서만 통한다. 그래서 OAuth
+    세션이면 `FEsubscriptions` / `FEwhat_to_watch`를 TVHTML5로 부르고 `tileRenderer`를
+    파싱한다 (`parse_tile_stream_item`). 2026-10-27 실제 계정으로 구독 44개 / 추천 22개 확인
+  - 대화상자는 버튼이 최대 3개라서 로그인 상태에서는 쿠키 직접 입력 버튼을 뺐다.
+- 플레이어 `-` 버튼: 화질 순환 (Best → 1080p → 720p → 320p). 플레이어를 끝내고
+  `restart_request`로 같은 영상을 현재 위치(`start`)에서 다시 연다. 스트림 브리지 경로는
+  이어보기를 건너뛴다 (받지 않은 구간으로 이동 불가).
+- 댓글 / 재생목록: `X`로 다음 페이지. 재생목록 browse 응답이 이제 `lockupViewModel`이라
+  `collect_playlist_items`가 lockup도 읽도록 고쳤다 (기존 파서는 0개였다).
+  토큰은 `continuationItemRenderer` / `continuationItemViewModel` 안의 것만 쓴다.
+- 검증
+  - devkitA64 `g++ -fsyntax-only`로 `switch_player.cpp` 외 변경 파일 전부 통과
+  - `switch_player.cpp`는 `./build.sh`(CI)로만 확인 가능
+  - 실기 동작은 아직 확인하지 않았다
+
 ## 좌우 seek 복구 (2026-07-29)
 
 roadmap Phase 2의 `좌우 seek 복구` 항목. `좌 / 우` 10초, `LB / RB` 60초다.

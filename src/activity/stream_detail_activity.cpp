@@ -203,7 +203,7 @@ void StreamDetailActivity::openPlaylistFeed() {
         title = newpipe::tr("detail/playlist_action");
     }
 
-    brls::Application::pushActivity(new StreamFeedActivity(title, feed->items));
+    brls::Application::pushActivity(new StreamFeedActivity(title, feed->items, feed->continuation));
 }
 
 void StreamDetailActivity::openComments() {
@@ -220,7 +220,7 @@ void StreamDetailActivity::openComments() {
         title = newpipe::tr("comments/title");
     }
 
-    brls::Application::pushActivity(new CommentFeedActivity(title, page->items));
+    brls::Application::pushActivity(new CommentFeedActivity(title, page->items, page->continuation));
 }
 
 void StreamDetailActivity::toggleFavorite() {

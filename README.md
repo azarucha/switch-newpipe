@@ -56,15 +56,24 @@
 | `Left / Right` | Seek 10 seconds |
 | `LB / RB` | Seek 60 seconds |
 | `X / Y` | Toggle OSD overlay |
+| `-` (Minus) | Switch quality (Best → 1080p → 720p → 320p) and resume at the same position |
 
 On progressive and UMP streams you can only seek inside the part that has already
 been downloaded; the OSD progress bar shows that range and the reachable limit.
 
 ## Login (Optional)
 
-Switch-NewPipe uses cookie import for YouTube login. No OAuth or Google sign-in required.
+**Sign in with a code (recommended):**
 
-**How to set up:**
+1. Open the **Subscriptions** tab and press `RB`
+2. Choose **Sign in with code**
+3. On your phone or PC, open the shown address (google.com/device) and enter the code
+
+The app signs in through the YouTube TV client, the same way TV apps do. Google has
+flagged accounts used with unofficial clients before, so consider the risk for your
+main account. The login is saved in `switch_newpipe_session.json` and refreshed automatically.
+
+**Or import cookies:**
 
 1. Export your YouTube cookies from a browser (using a cookie export extension)
 2. Save the file as `sdmc:/switch/switch_newpipe_auth.txt`
@@ -128,11 +137,9 @@ make host
 
 ## Known Limitations
 
-- Seek is not yet supported
-- No in-app quality picker during playback
-- No in-app Google OAuth (cookie import only)
+- Seek on progressive / UMP streams only reaches the already downloaded part
+- A quality change on progressive / UMP streams restarts from the beginning
 - Channel pages are not fully browsable yet
-- Comments and playlists load first page only
 
 ## Tech Stack
 

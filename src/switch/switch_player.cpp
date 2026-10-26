@@ -32,6 +32,7 @@
 
 #include "newpipe/i18n.hpp"
 #include "newpipe/log.hpp"
+#include "newpipe/settings_store.hpp"
 #include "newpipe/ump.hpp"
 #include "newpipe/youtube_resolver.hpp"
 
@@ -969,6 +970,9 @@ private:
         }
 
         YouTubeResolver resolver;
+        if (request_.quality_override >= 0) {
+            resolver.set_quality_override(static_cast<PlaybackQualityMode>(request_.quality_override));
+        }
         const auto resolved = resolver.resolve(
             request_.url,
             error,
@@ -2023,6 +2027,17 @@ private:
     bool load_file(std::string& error) {
         const std::string playback_url = use_stream_bridge_ ? std::string(kProtocolPrefix) + "playback" : active_url_;
         logf("player: loadfile url=%s", playback_url.c_str());
+        // The stream bridge only seeks inside already downloaded bytes, so a
+        // resume position is only honoured when mpv fetches the stream itself.
+        if (request_.start_seconds > 1.0 && !active_is_live_) {
+            if (use_stream_bridge_) {
+                logf("player: resume at %.1f skipped on stream bridge", request_.start_seconds);
+            } else {
+                const std::string start = std::to_string(static_cast<int>(request_.start_seconds));
+                mpv_set_property_string(mpv_, "start", start.c_str());
+                logf("player: resume at %s", start.c_str());
+            }
+        }
         const char* command[] = {"loadfile", playback_url.c_str(), nullptr};
         if (mpv_command(mpv_, command) < 0) {
             error = "mpv loadfile failed";
@@ -2293,9 +2308,28 @@ private:
             case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
                 seek_relative(kLongSeekSeconds, force_redraw);
                 break;
+            case SDL_CONTROLLER_BUTTON_BACK:
+                request_quality_change(running);
+                break;
             default:
                 break;
         }
+    }
+
+    // Cycles Best -> 1080p -> 720p -> 320p and restarts at the current position.
+    void request_quality_change(bool& running) {
+        if (!first_frame_rendered_) {
+            return;
+        }
+        const int current = request_.quality_override >= 0
+            ? request_.quality_override
+            : static_cast<int>(SettingsStore::instance().settings().playback_quality);
+        PlaybackRequest next = request_;
+        next.quality_override = (current + 1) % 4;
+        next.start_seconds = active_is_live_ ? 0.0 : last_time_pos_;
+        logf("player: quality change %d -> %d at %.1f", current, next.quality_override, next.start_seconds);
+        restart_request_ = next;
+        running = false;
     }
 
     void handle_joy_button(Uint8 button, bool& running, bool& paused, bool& force_redraw) {
@@ -2337,6 +2371,10 @@ private:
                 break;
             case 7:
                 seek_relative(kLongSeekSeconds, force_redraw);
+                break;
+            // 11 is the minus button.
+            case 11:
+                request_quality_change(running);
                 break;
             default:
                 break;
@@ -2828,13 +2866,23 @@ private:
     double last_duration_ = 0.0;
     double last_volume_ = 100.0;
     bool last_pause_state_ = false;
+
+public:
+    std::optional<PlaybackRequest> restart_request_;
 };
 
 }  // namespace
 
-bool run_switch_player(const PlaybackRequest& request, std::string& error) {
+bool run_switch_player(
+    const PlaybackRequest& request,
+    std::string& error,
+    std::optional<PlaybackRequest>* restart_request) {
     SwitchPlayer player(request);
-    return player.run(error);
+    const bool ok = player.run(error);
+    if (restart_request) {
+        *restart_request = player.restart_request_;
+    }
+    return ok;
 }
 
 }  // namespace newpipe

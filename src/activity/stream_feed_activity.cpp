@@ -12,9 +12,13 @@ namespace {
 constexpr size_t kGridColumns = 4;
 }
 
-StreamFeedActivity::StreamFeedActivity(std::string title, std::vector<newpipe::StreamItem> items)
+StreamFeedActivity::StreamFeedActivity(
+    std::string title,
+    std::vector<newpipe::StreamItem> items,
+    std::string continuation)
     : title_(std::move(title))
     , items_(std::move(items))
+    , continuation_(std::move(continuation))
     , service_() {
 }
 
@@ -24,15 +28,57 @@ void StreamFeedActivity::onContentAvailable() {
         brls::Application::popActivity();
         return true;
     });
+    this->registerAction(newpipe::tr("common/load_more"), brls::BUTTON_X, [this](brls::View*) {
+        this->loadMore();
+        return true;
+    });
 
     if (this->statusLabel) {
         this->statusLabel->setText(this->title_);
     }
+    this->updateSubtitle();
+    this->buildGrid();
+}
+
+void StreamFeedActivity::updateSubtitle() {
     if (this->subtitleLabel) {
-        this->subtitleLabel->setText(newpipe::tr("feed/subtitle"));
+        this->subtitleLabel->setText(this->continuation_.empty()
+                ? newpipe::tr("feed/subtitle")
+                : newpipe::tr("feed/subtitle_more"));
+    }
+}
+
+void StreamFeedActivity::loadMore() {
+    if (this->continuation_.empty()) {
+        brls::Application::notify(newpipe::tr("common/no_more"));
+        return;
     }
 
+    const auto feed = this->service_.get_playlist_continuation(this->continuation_);
+    if (!feed.has_value()) {
+        brls::Application::notify(this->service_.error_message().empty()
+                ? newpipe::tr("detail/playlist_load_failed")
+                : this->service_.error_message());
+        return;
+    }
+
+    const size_t first_new = this->items_.size();
+    this->items_.insert(this->items_.end(), feed->items.begin(), feed->items.end());
+    this->continuation_ = feed->continuation;
+    this->updateSubtitle();
+    // Rebuilding deletes the focused card, which leaves borealis without focus;
+    // hand it to the first newly loaded card.
     this->buildGrid();
+    const auto& rows = this->gridBox->getChildren();
+    const size_t row = first_new / kGridColumns;
+    auto* row_box = row < rows.size() ? dynamic_cast<brls::Box*>(rows[row]) : nullptr;
+    if (row_box) {
+        const auto& cards = row_box->getChildren();
+        const size_t column = first_new % kGridColumns;
+        if (column < cards.size()) {
+            brls::Application::giveFocus(cards[column]);
+        }
+    }
 }
 
 bool StreamFeedActivity::allowInitialInput() const {

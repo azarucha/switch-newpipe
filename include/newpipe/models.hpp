@@ -39,6 +39,7 @@ struct CommentItem {
 struct HomeFeed {
     Kiosk kiosk;
     std::vector<StreamItem> items;
+    std::string continuation;  // next page token, empty when there is none
 };
 
 struct SearchResults {
@@ -58,6 +59,7 @@ struct StreamDetail {
 struct CommentPage {
     std::string title;
     std::vector<CommentItem> items;
+    std::string continuation;  // next page token, empty when there is none
 };
 
 }  // namespace newpipe

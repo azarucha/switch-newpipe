@@ -38,6 +38,8 @@ public:
     std::optional<HomeFeed> get_channel_feed(const StreamItem& item) const;
     std::optional<HomeFeed> get_playlist_feed(const StreamItem& item) const;
     std::optional<CommentPage> get_comments(const StreamItem& item) const;
+    std::optional<HomeFeed> get_playlist_continuation(const std::string& token) const;
+    std::optional<CommentPage> get_comments_continuation(const std::string& token) const;
     SearchResults search(const std::string& query) const override;
     std::optional<StreamDetail> get_stream_detail(const std::string& url) const override;
 
@@ -46,6 +48,11 @@ private:
         const std::string& kiosk_id,
         const std::string& title,
         const std::string& query,
+        bool allow_short_videos) const;
+    std::optional<HomeFeed> fetch_tv_browse_feed(
+        const std::string& browse_id,
+        const std::string& title,
+        size_t limit,
         bool allow_short_videos) const;
     std::optional<HomeFeed> fetch_authenticated_browse_feed(
         const std::string& browse_id,

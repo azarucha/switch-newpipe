@@ -1,7 +1,11 @@
 #include "tab/subscriptions_tab.hpp"
 
+#include <chrono>
+#include <thread>
+
 #include "activity/stream_detail_activity.hpp"
 #include "newpipe/auth_store.hpp"
+#include "newpipe/http_client.hpp"
 #include "newpipe/i18n.hpp"
 #include "newpipe/library_store.hpp"
 #include "newpipe/log.hpp"
@@ -20,6 +24,12 @@ SubscriptionsTab::SubscriptionsTab() : service_() {
     brls::delay(700, [this]() { interactionReady_.store(true); });
 
     this->refresh();
+}
+
+SubscriptionsTab::~SubscriptionsTab() {
+    if (this->deviceLoginCancelled_) {
+        this->deviceLoginCancelled_->store(true);
+    }
 }
 
 void SubscriptionsTab::onCreate() {
@@ -183,7 +193,12 @@ void SubscriptionsTab::openSessionDialog() {
         body = newpipe::tr("subscriptions/session_dialog/signed_out", newpipe::default_auth_import_path());
     }
 
+    // Borealis dialogs hold at most three buttons; B closes the dialog.
     auto* dialog = new brls::Dialog(body);
+    dialog->addButton(newpipe::tr("subscriptions/session_dialog/device_login"), [this, dialog]() {
+        dialog->close();
+        this->startDeviceLogin();
+    });
     dialog->addButton(newpipe::tr("subscriptions/session_dialog/load_file"), [this, dialog]() {
         dialog->close();
         std::string error;
@@ -195,16 +210,17 @@ void SubscriptionsTab::openSessionDialog() {
         }
         this->refresh();
     });
-    dialog->addButton(newpipe::tr("subscriptions/session_dialog/input_cookie"), [this, dialog]() {
-        dialog->close();
-        brls::Application::getImeManager()->openForText(
-            [this](const std::string& text) { this->handleManualCookieInput(text); },
-            newpipe::tr("subscriptions/session_dialog/ime_title"),
-            newpipe::tr("subscriptions/session_dialog/ime_subtitle"),
-            4096,
-            "");
-    });
-    if (this->service_.has_auth_session()) {
+    if (!this->service_.has_auth_session()) {
+        dialog->addButton(newpipe::tr("subscriptions/session_dialog/input_cookie"), [this, dialog]() {
+            dialog->close();
+            brls::Application::getImeManager()->openForText(
+                [this](const std::string& text) { this->handleManualCookieInput(text); },
+                newpipe::tr("subscriptions/session_dialog/ime_title"),
+                newpipe::tr("subscriptions/session_dialog/ime_subtitle"),
+                4096,
+                "");
+        });
+    } else {
         dialog->addButton(newpipe::tr("subscriptions/session_dialog/logout"), [this, dialog]() {
             dialog->close();
             std::string error;
@@ -217,9 +233,84 @@ void SubscriptionsTab::openSessionDialog() {
             this->refresh();
         });
     }
-    dialog->addButton(newpipe::tr("common/close"), [dialog]() { dialog->close(); });
     dialog->setCancelable(true);
     dialog->open();
+}
+
+void SubscriptionsTab::startDeviceLogin() {
+    if (this->deviceLoginCancelled_) {
+        this->deviceLoginCancelled_->store(true);
+    }
+    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    this->deviceLoginCancelled_ = cancelled;
+    brls::Application::notify(newpipe::tr("subscriptions/device_login/requesting"));
+
+    brls::async([this, cancelled]() {
+        newpipe::HttpsHttpClient client;
+        std::string error;
+        const auto code = newpipe::AuthStore::instance().start_device_login(client, &error);
+        if (!code.has_value()) {
+            brls::sync([cancelled, error]() {
+                if (!cancelled->load()) {
+                    brls::Application::notify(
+                        error.empty() ? newpipe::tr("subscriptions/device_login/failed") : error);
+                }
+            });
+            return;
+        }
+
+        // The code dialog lives on the UI thread; the poll result closes it.
+        auto dialog_slot = std::make_shared<brls::Dialog*>(nullptr);
+        brls::sync([cancelled, code, dialog_slot]() {
+            if (cancelled->load()) {
+                return;
+            }
+            auto* dialog = new brls::Dialog(newpipe::tr(
+                "subscriptions/device_login/body", code->verification_url, code->user_code));
+            dialog->addButton(newpipe::tr("common/cancel"), [cancelled, dialog]() {
+                cancelled->store(true);
+                dialog->close();
+            });
+            dialog->setCancelable(false);
+            dialog->open();
+            *dialog_slot = dialog;
+        });
+
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(code->expires_in_seconds);
+        auto status = newpipe::DeviceLoginStatus::Pending;
+        while (!cancelled->load() && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::seconds(code->interval_seconds));
+            if (cancelled->load()) {
+                break;
+            }
+            status = newpipe::AuthStore::instance().poll_device_login(client, code->device_code, &error);
+            if (status != newpipe::DeviceLoginStatus::Pending) {
+                break;
+            }
+        }
+        if (status == newpipe::DeviceLoginStatus::Pending && error.empty()) {
+            error = newpipe::tr("subscriptions/device_login/expired");
+        }
+
+        brls::sync([this, cancelled, dialog_slot, status, error]() {
+            if (cancelled->load()) {
+                return;
+            }
+            if (*dialog_slot) {
+                (*dialog_slot)->close();
+            }
+            if (status == newpipe::DeviceLoginStatus::Success) {
+                brls::Application::notify(newpipe::tr("subscriptions/device_login/done"));
+                std::string ignored;
+                this->service_.reload_auth_session(&ignored);
+                this->refresh();
+            } else {
+                brls::Application::notify(
+                    error.empty() ? newpipe::tr("subscriptions/device_login/failed") : error);
+            }
+        });
+    });
 }
 
 void SubscriptionsTab::handleManualCookieInput(const std::string& text) {

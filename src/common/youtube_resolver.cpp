@@ -810,14 +810,15 @@ std::optional<ResolvedPlayback> YouTubeResolver::resolve_internal(
 
     report_status(on_status, "RESOLVING YOUTUBE STREAM", "CONTACTING PLAYER API");
     const AppSettings settings = SettingsStore::instance().settings();
-    const int preferred_height = preferred_height_for_quality(settings.playback_quality);
+    const PlaybackQualityMode quality_mode = quality_override_.value_or(settings.playback_quality);
+    const int preferred_height = preferred_height_for_quality(quality_mode);
     // Low quality (<=360p) is served most reliably by the muxed progressive
     // stream (itag 18), which is small and throttle-free. Higher qualities go
     // through the adaptive/HLS path so we can reach 720p and 1080p.
     const bool prefer_progressive_first = preferred_height <= 360;
     const bool allow_adaptive = preferred_height >= 720;
     logf("youtube: quality mode=%d preferred_height=%d",
-         static_cast<int>(settings.playback_quality),
+         static_cast<int>(quality_mode),
          preferred_height);
 
     const auto root = fetch_player_response(

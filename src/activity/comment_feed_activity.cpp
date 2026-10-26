@@ -2,9 +2,13 @@
 
 #include "newpipe/i18n.hpp"
 
-CommentFeedActivity::CommentFeedActivity(std::string title, std::vector<newpipe::CommentItem> items)
+CommentFeedActivity::CommentFeedActivity(
+    std::string title,
+    std::vector<newpipe::CommentItem> items,
+    std::string continuation)
     : title_(std::move(title))
-    , items_(std::move(items)) {
+    , items_(std::move(items))
+    , continuation_(std::move(continuation)) {
 }
 
 void CommentFeedActivity::onContentAvailable() {
@@ -12,14 +16,43 @@ void CommentFeedActivity::onContentAvailable() {
         brls::Application::popActivity();
         return true;
     });
+    this->registerAction(newpipe::tr("common/load_more"), brls::BUTTON_X, [this](brls::View*) {
+        this->loadMore();
+        return true;
+    });
 
     if (this->titleLabel) {
         this->titleLabel->setText(this->title_.empty() ? newpipe::tr("comments/title") : this->title_);
     }
+    this->updateSubtitle();
+    this->buildList();
+}
+
+void CommentFeedActivity::updateSubtitle() {
     if (this->subtitleLabel) {
-        this->subtitleLabel->setText(newpipe::tr("comments/subtitle"));
+        this->subtitleLabel->setText(this->continuation_.empty()
+                ? newpipe::tr("comments/subtitle")
+                : newpipe::tr("comments/subtitle_more"));
+    }
+}
+
+void CommentFeedActivity::loadMore() {
+    if (this->continuation_.empty()) {
+        brls::Application::notify(newpipe::tr("common/no_more"));
+        return;
     }
 
+    const auto page = this->service_.get_comments_continuation(this->continuation_);
+    if (!page.has_value()) {
+        brls::Application::notify(this->service_.error_message().empty()
+                ? newpipe::tr("detail/comments_load_failed")
+                : this->service_.error_message());
+        return;
+    }
+
+    this->items_.insert(this->items_.end(), page->items.begin(), page->items.end());
+    this->continuation_ = page->continuation;
+    this->updateSubtitle();
     this->buildList();
 }
 

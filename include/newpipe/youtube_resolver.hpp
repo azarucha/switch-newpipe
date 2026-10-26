@@ -51,6 +51,9 @@ public:
         std::string& error_message,
         ResolverStatusCallback on_status = {});
 
+    // Overrides the quality from settings for this resolver only.
+    void set_quality_override(PlaybackQualityMode mode) { quality_override_ = mode; }
+
     static bool is_youtube_url(const std::string& url);
     static std::optional<std::string> extract_video_id(const std::string& url);
 
@@ -66,6 +69,7 @@ private:
     HttpsHttpClient owned_client_;
     HttpClient* client_ = nullptr;
     ThrottlingDecrypter throttle_decrypter_;
+    std::optional<PlaybackQualityMode> quality_override_;
 };
 
 }  // namespace newpipe
