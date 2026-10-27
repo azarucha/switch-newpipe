@@ -34,6 +34,10 @@ class DownloadManager {
 public:
     static DownloadManager& instance();
 
+    // Starts the background worker. Called once at app start, while thread
+    // and memory resources are still free; enqueue retries it if needed.
+    bool start(std::string* error_message = nullptr);
+
     bool enqueue(const StreamItem& item, int preferred_height, std::string* error_message = nullptr);
     bool remove(const std::string& id, std::string* error_message = nullptr);
     std::vector<DownloadEntry> entries() const;
@@ -44,8 +48,12 @@ private:
 
     void load_index();
     void persist_index_locked() const;
-    void ensure_worker_locked();
-    void worker();
+    bool ensure_worker_locked(std::string* error_message);
+
+public:
+    void run_worker();  // worker thread body
+
+private:
     bool download_one(const std::string& id, int preferred_height, std::string& error);
     void set_progress(const std::string& id, int percent);
 

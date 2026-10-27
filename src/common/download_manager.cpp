@@ -9,6 +9,10 @@
 
 #include <sys/stat.h>
 
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
+
 #include "nlohmann/json.hpp"
 #include "newpipe/http_client.hpp"
 #include "newpipe/log.hpp"
@@ -213,10 +217,12 @@ bool DownloadManager::enqueue(const StreamItem& item, int preferred_height, std:
     DownloadEntry entry;
     entry.item = item;
     entry.state = DownloadState::Queued;
+    if (!this->ensure_worker_locked(error_message)) {
+        return false;
+    }
     this->entries_.insert(this->entries_.begin(), entry);
     this->queue_.emplace_back(item.id, preferred_height);
     this->persist_index_locked();
-    this->ensure_worker_locked();
     this->wake_.notify_one();
     logf("downloads: queued id=%s height=%d", item.id.c_str(), preferred_height);
     if (error_message) {
@@ -275,14 +281,62 @@ std::optional<DownloadEntry> DownloadManager::find(const std::string& id) const 
     return std::nullopt;
 }
 
-void DownloadManager::ensure_worker_locked() {
+#ifdef __SWITCH__
+namespace {
+constexpr size_t kWorkerStackSize = 0x40000;
+
+void worker_entry(void* arg) {
+    static_cast<DownloadManager*>(arg)->run_worker();
+}
+}  // namespace
+#endif
+
+bool DownloadManager::ensure_worker_locked(std::string* error_message) {
     if (this->worker_started_) {
-        return;
+        return true;
     }
-    this->worker_started_ = true;
     mkdir(default_downloads_dir().c_str(), 0777);
-    // Detached: the process may exit with a download in flight.
-    std::thread([this]() { this->worker(); }).detach();
+
+#ifdef __SWITCH__
+    // A libnx thread instead of std::thread: std::thread throws when the
+    // kernel refuses a thread, and the uncaught exception aborted the app.
+    static Thread thread;
+    Result rc = threadCreate(&thread, worker_entry, this, nullptr, kWorkerStackSize, 0x2C, -2);
+    if (R_SUCCEEDED(rc)) {
+        rc = threadStart(&thread);
+        if (R_FAILED(rc)) {
+            threadClose(&thread);
+        }
+    }
+    if (R_FAILED(rc)) {
+        logf("downloads: worker thread failed rc=0x%x", rc);
+        if (error_message) {
+            char code[16];
+            std::snprintf(code, sizeof(code), "0x%x", rc);
+            *error_message = std::string("Download thread could not start (") + code + ")";
+        }
+        return false;
+    }
+#else
+    try {
+        // Detached: the process may exit with a download in flight.
+        std::thread([this]() { this->run_worker(); }).detach();
+    } catch (const std::exception& ex) {
+        logf("downloads: worker thread failed: %s", ex.what());
+        if (error_message) {
+            *error_message = ex.what();
+        }
+        return false;
+    }
+#endif
+    this->worker_started_ = true;
+    log_line("downloads: worker started");
+    return true;
+}
+
+bool DownloadManager::start(std::string* error_message) {
+    std::lock_guard<std::mutex> lock(this->mutex_);
+    return this->ensure_worker_locked(error_message);
 }
 
 void DownloadManager::set_progress(const std::string& id, int percent) {
@@ -295,7 +349,7 @@ void DownloadManager::set_progress(const std::string& id, int percent) {
     }
 }
 
-void DownloadManager::worker() {
+void DownloadManager::run_worker() {
     while (true) {
         std::pair<std::string, int> job;
         {

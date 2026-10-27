@@ -13,6 +13,7 @@
 #include "newpipe/i18n.hpp"
 #include "newpipe/log.hpp"
 #include "newpipe/runtime.hpp"
+#include "newpipe/download_manager.hpp"
 #include "newpipe/settings_store.hpp"
 #if defined(__SWITCH__)
 #include "newpipe/switch_player.hpp"
@@ -150,6 +151,10 @@ int main(int argc, char* argv[]) {
         std::string auth_error;
         if (!newpipe::AuthStore::instance().load(&auth_error) && !auth_error.empty()) {
             newpipe::logf("main: auth load failed error=%s", auth_error.c_str());
+        }
+        std::string download_error;
+        if (!newpipe::DownloadManager::instance().start(&download_error)) {
+            newpipe::logf("main: download worker failed error=%s", download_error.c_str());
         }
         std::string settings_error;
         if (!newpipe::SettingsStore::instance().load(&settings_error) && !settings_error.empty()) {
