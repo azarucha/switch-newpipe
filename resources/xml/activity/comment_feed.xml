@@ -5,23 +5,23 @@
         width="100%"
         height="100%"
         axis="column"
-        paddingTop="20"
-        paddingLeft="20"
-        paddingRight="20">
+        paddingTop="26"
+        paddingLeft="34"
+        paddingRight="24">
         <brls:Label
             id="comments/title"
             width="auto"
             height="auto"
-            text="댓글"
-            fontSize="24"
-            textColor="#FFFFFF"
+            text=""
+            fontSize="26"
+            textColor="#F1F1F1"
             marginBottom="8" />
 
         <brls:Label
             id="comments/subtitle"
             width="auto"
             height="auto"
-            text="B 뒤로"
+            text=""
             fontSize="16"
             textColor="#B0B0B0"
             marginBottom="10" />

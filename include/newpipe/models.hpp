@@ -23,6 +23,7 @@ struct StreamItem {
     std::string view_count_text;
     std::string published_text;
     bool is_live = false;
+    bool is_playlist = false;  // id is a playlist id, view_count_text its size
 };
 
 struct CommentItem {

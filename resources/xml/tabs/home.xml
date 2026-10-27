@@ -2,18 +2,25 @@
     width="auto"
     height="auto"
     axis="column"
-    paddingTop="20"
-    paddingLeft="20"
-    paddingRight="20">
+    paddingTop="26"
+    paddingLeft="34"
+    paddingRight="16">
 
     <brls:Label
         id="home/status"
         width="auto"
         height="auto"
-        text="Loading..."
-        fontSize="20"
-        textColor="#EAEAEA"
-        marginBottom="12" />
+        text=""
+        fontSize="17"
+        textColor="#F1F1F1"
+        marginBottom="14" />
+
+    <brls:Box
+        id="home/chips"
+        width="auto"
+        height="auto"
+        axis="row"
+        marginBottom="18" />
 
     <brls:ProgressSpinner
         id="home/spinner"
@@ -30,7 +37,9 @@
             id="home/grid"
             width="auto"
             height="auto"
-            axis="column" />
+            axis="column"
+            paddingTop="4"
+            paddingBottom="24" />
 
     </brls:ScrollingFrame>
 

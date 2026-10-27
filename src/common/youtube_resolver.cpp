@@ -363,7 +363,7 @@ std::string fetch_web_visitor_data(HttpClient* client, std::string& error_messag
             {"Accept", "*/*"},
             {"User-Agent", kWebUserAgent},
             {"Referer", "https://www.youtube.com/sw.js"},
-            {"Cookie", "PREF=tz=Asia.Seoul;VISITOR_INFO1_LIVE=" + generate_web_visitor_id() + ";"},
+            {"Cookie", "PREF=tz=Europe.Berlin;VISITOR_INFO1_LIVE=" + generate_web_visitor_id() + ";"},
         });
     if (!response.has_value()) {
         error_message = "YouTube WEB session request failed";
@@ -668,13 +668,41 @@ std::optional<SelectedHlsPlayback> pick_preferred_hls_playback(
 }
 
 
+std::vector<CaptionTrack> parse_caption_tracks(const json& root) {
+    std::vector<CaptionTrack> tracks;
+    const json list = root.value("captions", json::object())
+                          .value("playerCaptionsTracklistRenderer", json::object())
+                          .value("captionTracks", json::array());
+    for (const auto& track : list) {
+        CaptionTrack caption;
+        caption.language = get_string(track, "languageCode");
+        caption.url = get_string(track, "baseUrl");
+        const json name = track.value("name", json::object());
+        caption.name = get_string(name, "simpleText");
+        if (caption.name.empty()) {
+            for (const auto& run : name.value("runs", json::array())) {
+                caption.name += get_string(run, "text");
+            }
+        }
+        if (caption.name.empty()) {
+            caption.name = caption.language;
+        }
+        if (!caption.url.empty()) {
+            caption.url += "&fmt=vtt";
+            tracks.push_back(std::move(caption));
+        }
+    }
+    return tracks;
+}
+
 std::optional<SelectedHlsPlayback> fetch_visionos_hls_selection(
     HttpClient* client,
     const std::string& video_id,
     const std::string& visitor_data,
     int requested_height,
     std::string& hls_manifest_url,
-    std::string& error_message) {
+    std::string& error_message,
+    std::vector<CaptionTrack>* captions = nullptr) {
     const auto root = fetch_player_response(
         client,
         video_id,
@@ -701,6 +729,9 @@ std::optional<SelectedHlsPlayback> fetch_visionos_hls_selection(
         return std::nullopt;
     }
 
+    if (captions) {
+        *captions = parse_caption_tracks(*root);
+    }
     const json streaming = root->value("streamingData", json::object());
     hls_manifest_url = get_string(streaming, "hlsManifestUrl");
     if (hls_manifest_url.empty()) {
@@ -731,13 +762,15 @@ std::optional<ResolvedPlayback> resolve_visionos_hls_playback(
     std::string& error_message) {
     const int requested_height = preferred_height;
     std::string hls_manifest_url;
+    std::vector<CaptionTrack> captions;
     const auto selected_playback = fetch_visionos_hls_selection(
-        client, video_id, visitor_data, requested_height, hls_manifest_url, error_message);
+        client, video_id, visitor_data, requested_height, hls_manifest_url, error_message, &captions);
     if (!selected_playback.has_value()) {
         return std::nullopt;
     }
 
     ResolvedPlayback result;
+    result.captions = std::move(captions);
     result.stream_url = hls_manifest_url;
     result.referer = "https://www.youtube.com/watch?v=" + video_id;
     result.http_header_fields = kYoutubeOriginHeader;

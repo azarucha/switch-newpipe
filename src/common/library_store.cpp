@@ -124,7 +124,7 @@ bool LibraryStore::load(std::string* error_message) {
     const json root = json::parse(raw, nullptr, false);
     if (root.is_discarded() || !root.is_object()) {
         if (error_message) {
-            *error_message = "라이브러리 저장 파일 파싱 실패";
+            *error_message = "Could not read the library file";
         }
         return false;
     }
@@ -280,7 +280,7 @@ bool LibraryStore::persist(std::string* error_message) {
 
     if (!write_text_file(default_library_store_path(), root.dump(2))) {
         if (error_message) {
-            *error_message = "라이브러리 저장 실패";
+            *error_message = "Could not save the library";
         }
         return false;
     }

@@ -2,28 +2,28 @@
     width="auto"
     height="auto"
     axis="column"
-    paddingTop="20"
-    paddingLeft="20"
-    paddingRight="20">
+    paddingTop="26"
+    paddingLeft="34"
+    paddingRight="16">
 
     <brls:Label
         id="subscriptions/status"
         width="auto"
         height="auto"
-        text="로그인 필요"
-        fontSize="20"
-        textColor="#FFFFFF"
-        marginBottom="8" />
+        text=""
+        fontSize="26"
+        textColor="#F1F1F1"
+        marginBottom="14" />
 
     <brls:Label
         id="subscriptions/body"
         width="auto"
         height="auto"
-        lineHeight="1.55"
-        text="RB로 세션 관리"
-        fontSize="18"
-        textColor="#D0D0D0"
-        marginBottom="12" />
+        lineHeight="1.5"
+        text=""
+        fontSize="15"
+        textColor="#AAAAAA"
+        marginBottom="14" />
 
     <brls:ProgressSpinner
         id="subscriptions/spinner"
@@ -40,7 +40,9 @@
             id="subscriptions/grid"
             width="auto"
             height="auto"
-            axis="column" />
+            axis="column"
+            paddingTop="4"
+            paddingBottom="24" />
 
     </brls:ScrollingFrame>
 

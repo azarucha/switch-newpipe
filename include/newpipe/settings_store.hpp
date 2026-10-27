@@ -17,6 +17,16 @@ struct AppSettings {
 
 std::string default_settings_store_path();
 
+// Language/region sent to YouTube (hl/gl), following the app language.
+struct ContentLocale {
+    std::string hl;
+    std::string gl;
+};
+
+// "auto" follows the console language; main() passes it in once borealis knows it.
+void set_system_locale(const std::string& locale);
+ContentLocale content_locale();
+
 class SettingsStore {
 public:
     static SettingsStore& instance();

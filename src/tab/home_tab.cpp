@@ -11,7 +11,7 @@
 #include "view/tab_focus.hpp"
 
 namespace {
-constexpr size_t kGridColumns = 4;
+constexpr size_t kGridColumns = 3;
 }
 
 HomeTab::HomeTab() : service_() {
@@ -53,6 +53,9 @@ void HomeTab::onCreate() {
 
 void HomeTab::loadHome() {
     newpipe::logf("home: loadHome index=%zu", kioskIndex_);
+    if (statusLabel) {
+        statusLabel->setVisibility(brls::Visibility::VISIBLE);
+    }
     if (!initialLoadCompleted_) {
         initialLoadAttempts_++;
     }
@@ -81,6 +84,7 @@ void HomeTab::loadHome() {
     }
 
     kioskIndex_ %= kiosks_.size();
+    buildChips();
     const auto feed = service_.get_home_feed(kiosks_[kioskIndex_].id);
     if (!feed.has_value()) {
         if (statusLabel) {
@@ -115,7 +119,8 @@ void HomeTab::loadHome() {
         if (!translated.empty() && translated != option_key) {
             title = translated;
         }
-        statusLabel->setText(newpipe::tr("common/count_with_title", title, items_.size()));
+        statusLabel->setText("");
+        statusLabel->setVisibility(brls::Visibility::GONE);
     }
     if (spinner) {
         spinner->setVisibility(brls::Visibility::GONE);
@@ -137,7 +142,7 @@ void HomeTab::buildGrid() {
     gridBox->clearViews();
     for (size_t i = 0; i < items_.size(); i += kGridColumns) {
         auto* row = new brls::Box(brls::Axis::ROW);
-        row->setMarginBottom(8);
+        row->setMarginBottom(22);
 
         for (size_t j = i; j < i + kGridColumns && j < items_.size(); j++) {
             auto* card = new StreamCard();
@@ -157,6 +162,43 @@ void HomeTab::buildGrid() {
 
         gridBox->addView(row);
     }
+}
+
+// YouTube-style category chips; Y moves to the next one.
+void HomeTab::buildChips() {
+    if (!chipsBox) {
+        return;
+    }
+    chipsBox->clearViews();
+    for (size_t i = 0; i < kiosks_.size(); i++) {
+        const bool active = i == kioskIndex_;
+        auto* chip = new brls::Box(brls::Axis::ROW);
+        chip->setPadding(7, 16, 7, 16);
+        chip->setMarginRight(10);
+        chip->setCornerRadius(8);
+        chip->setBackgroundColor(active ? nvgRGB(241, 241, 241) : nvgRGB(39, 39, 39));
+
+        std::string title = kiosks_[i].title;
+        const std::string option_key = "settings/home_kiosk/options/" + kiosks_[i].id;
+        const std::string translated = newpipe::tr(option_key);
+        if (!translated.empty() && translated != option_key) {
+            title = translated;
+        }
+        auto* label = new brls::Label();
+        label->setFontSize(15);
+        label->setSingleLine(true);
+        label->setText(title);
+        label->setTextColor(active ? nvgRGB(15, 15, 15) : nvgRGB(241, 241, 241));
+        chip->addView(label);
+        chipsBox->addView(chip);
+    }
+    auto* hint = new brls::Label();
+    hint->setFontSize(13);
+    hint->setMarginLeft(6);
+    hint->setText(newpipe::tr("home/chips_hint"));
+    hint->setTextColor(nvgRGB(113, 113, 113));
+    hint->setVerticalAlign(brls::VerticalAlign::CENTER);
+    chipsBox->addView(hint);
 }
 
 void HomeTab::cycleKiosk() {

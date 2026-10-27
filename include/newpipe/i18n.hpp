@@ -13,6 +13,9 @@ inline std::string locale_from_setting(const std::string& language) {
     if (language == "en-US") {
         return brls::LOCALE_EN_US;
     }
+    if (language == "de") {
+        return brls::LOCALE_DE;
+    }
     return brls::LOCALE_AUTO;
 }
 

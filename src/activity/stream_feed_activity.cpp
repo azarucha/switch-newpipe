@@ -9,7 +9,7 @@
 #include "view/stream_card.hpp"
 
 namespace {
-constexpr size_t kGridColumns = 4;
+constexpr size_t kGridColumns = 3;
 }
 
 StreamFeedActivity::StreamFeedActivity(
@@ -93,7 +93,7 @@ void StreamFeedActivity::buildGrid() {
     this->gridBox->clearViews();
     for (size_t i = 0; i < this->items_.size(); i += kGridColumns) {
         auto* row = new brls::Box(brls::Axis::ROW);
-        row->setMarginBottom(8);
+        row->setMarginBottom(22);
 
         for (size_t j = i; j < i + kGridColumns && j < this->items_.size(); j++) {
             auto* card = new StreamCard();

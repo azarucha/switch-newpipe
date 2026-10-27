@@ -15,7 +15,7 @@
 #include "view/tab_focus.hpp"
 
 namespace {
-constexpr size_t kGridColumns = 4;
+constexpr size_t kGridColumns = 3;
 }
 
 SubscriptionsTab::SubscriptionsTab() : service_() {
@@ -51,6 +51,9 @@ bool SubscriptionsTab::allowInitialInput() const {
 
 void SubscriptionsTab::refresh() {
     newpipe::log_line("subscriptions: refresh");
+    if (this->bodyLabel) {
+        this->bodyLabel->setVisibility(brls::Visibility::VISIBLE);
+    }
     if (this->spinner) {
         this->spinner->setVisibility(brls::Visibility::VISIBLE);
     }
@@ -108,18 +111,8 @@ void SubscriptionsTab::refresh() {
         this->statusLabel->setText(newpipe::tr("common/count_with_title", feed->kiosk.title, this->items_.size()));
     }
     if (this->bodyLabel) {
-        const auto session = this->service_.auth_session();
-        std::string session_name;
-        if (!session.display_name.empty()) {
-            session_name = session.display_name;
-        } else if (!session.source_path.empty()) {
-            session_name = session.source_path;
-        } else {
-            session_name = newpipe::tr("settings/session/saved");
-        }
-        std::string body = newpipe::tr("subscriptions/session_prefix", session_name);
-        body += "\n" + newpipe::tr("subscriptions/controls");
-        this->bodyLabel->setText(body);
+        this->bodyLabel->setText("");
+        this->bodyLabel->setVisibility(brls::Visibility::GONE);
     }
     if (this->spinner) {
         this->spinner->setVisibility(brls::Visibility::GONE);
@@ -135,7 +128,7 @@ void SubscriptionsTab::buildGrid() {
     this->gridBox->clearViews();
     for (size_t i = 0; i < this->items_.size(); i += kGridColumns) {
         auto* row = new brls::Box(brls::Axis::ROW);
-        row->setMarginBottom(8);
+        row->setMarginBottom(22);
 
         for (size_t j = i; j < i + kGridColumns && j < this->items_.size(); j++) {
             auto* card = new StreamCard();
@@ -167,6 +160,9 @@ void SubscriptionsTab::clearGrid() {
 
 void SubscriptionsTab::showSignedOutState() {
     this->clearGrid();
+    if (this->bodyLabel) {
+        this->bodyLabel->setVisibility(brls::Visibility::VISIBLE);
+    }
     if (this->statusLabel) {
         this->statusLabel->setText(newpipe::tr("subscriptions/signed_out_title"));
     }

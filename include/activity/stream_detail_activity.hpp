@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include <borealis.hpp>
@@ -26,13 +27,21 @@ private:
     void openComments();
     void startDownload();
     void toggleFavorite();
+    void buildActions(bool has_channel, bool has_related);
+    brls::Box* makeActionButton(const std::string& label, bool primary, std::function<void()> on_click);
 
     newpipe::StreamItem item_;
     newpipe::YouTubeCatalogService service_;
 
+    BRLS_BIND(brls::Image, thumbnail, "detail/thumbnail");
+    BRLS_BIND(brls::Box, badge, "detail/badge");
+    BRLS_BIND(brls::Label, badgeLabel, "detail/badge_label");
     BRLS_BIND(brls::Label, titleLabel, "detail/title");
+    BRLS_BIND(brls::Label, channelLabel, "detail/channel");
     BRLS_BIND(brls::Label, metaLabel, "detail/meta");
-    BRLS_BIND(brls::Label, statusLabel, "detail/status");
+    BRLS_BIND(brls::Box, actionsBox, "detail/actions");
+    BRLS_BIND(brls::Box, actionsMoreBox, "detail/actions_more");
     BRLS_BIND(brls::Label, bodyLabel, "detail/body");
+    brls::Box* favoriteButton_ = nullptr;
     BRLS_BIND(brls::ProgressSpinner, spinner, "detail/spinner");
 };

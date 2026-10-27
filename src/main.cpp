@@ -30,12 +30,36 @@ namespace {
 void configure_theme() {
     brls::Application::getPlatform()->setThemeVariant(brls::ThemeVariant::DARK);
 
-    brls::Theme::getDarkTheme().addColor("color/newpipe", nvgRGB(244, 67, 54));
-    brls::Theme::getDarkTheme().addColor("color/newpipe_bg", nvgRGB(18, 18, 18));
-    brls::Theme::getDarkTheme().addColor("color/newpipe_card", nvgRGB(28, 28, 28));
-    brls::Theme::getDarkTheme().addColor("color/grey_1", nvgRGB(28, 28, 28));
-    brls::Theme::getDarkTheme().addColor("color/grey_2", nvgRGB(36, 38, 42));
-    brls::Theme::getDarkTheme().addColor("color/grey_3", nvgRGBA(160, 160, 160, 160));
+    // YouTube dark: near-black surfaces, white text, red accent, white focus ring.
+    auto& dark = brls::Theme::getDarkTheme();
+    dark.addColor("color/newpipe", nvgRGB(255, 0, 0));
+    dark.addColor("color/newpipe_bg", nvgRGB(15, 15, 15));
+    dark.addColor("color/newpipe_card", nvgRGB(39, 39, 39));
+    dark.addColor("color/grey_1", nvgRGB(15, 15, 15));
+    dark.addColor("color/grey_2", nvgRGB(39, 39, 39));
+    dark.addColor("color/grey_3", nvgRGBA(170, 170, 170, 160));
+    dark.addColor("brls/clear", nvgRGB(15, 15, 15));
+    dark.addColor("brls/background", nvgRGB(15, 15, 15));
+    dark.addColor("brls/text", nvgRGB(241, 241, 241));
+    dark.addColor("brls/text_disabled", nvgRGB(113, 113, 113));
+    dark.addColor("brls/accent", nvgRGB(255, 0, 0));
+    dark.addColor("brls/click_pulse", nvgRGBA(255, 255, 255, 30));
+    dark.addColor("brls/highlight/background", nvgRGBA(255, 255, 255, 18));
+    dark.addColor("brls/highlight/color1", nvgRGB(241, 241, 241));
+    dark.addColor("brls/highlight/color2", nvgRGB(190, 190, 190));
+    dark.addColor("brls/sidebar/background", nvgRGB(15, 15, 15));
+    dark.addColor("brls/sidebar/active_item", nvgRGB(255, 255, 255));
+    dark.addColor("brls/sidebar/separator", nvgRGB(39, 39, 39));
+    dark.addColor("brls/header/border", nvgRGB(39, 39, 39));
+    dark.addColor("brls/header/subtitle", nvgRGB(170, 170, 170));
+    dark.addColor("brls/applet_frame/separator", nvgRGB(39, 39, 39));
+    dark.addColor("brls/button/primary_enabled_background", nvgRGB(241, 241, 241));
+    dark.addColor("brls/button/primary_enabled_text", nvgRGB(15, 15, 15));
+    dark.addColor("brls/button/default_enabled_background", nvgRGB(39, 39, 39));
+    dark.addColor("brls/button/highlight_enabled_text", nvgRGB(255, 255, 255));
+    dark.addColor("brls/list/listItem_value_color", nvgRGB(170, 170, 170));
+    dark.addColor("brls/slider/line_filled", nvgRGB(255, 0, 0));
+    dark.addColor("brls/spinner/bar_color", nvgRGBA(241, 241, 241, 90));
 
     brls::Theme::getLightTheme().addColor("color/newpipe", nvgRGB(216, 67, 21));
     brls::Theme::getLightTheme().addColor("color/newpipe_bg", nvgRGB(248, 248, 248));
@@ -44,7 +68,10 @@ void configure_theme() {
     brls::Theme::getLightTheme().addColor("color/grey_2", nvgRGB(235, 236, 238));
     brls::Theme::getLightTheme().addColor("color/grey_3", nvgRGBA(200, 200, 200, 16));
 
-    brls::getStyle().addMetric("brls/tab_frame/sidebar_width", 160);
+    brls::getStyle().addMetric("brls/tab_frame/sidebar_width", 112);
+    brls::getStyle().addMetric("brls/highlight/stroke_width", 3.0f);
+    brls::getStyle().addMetric("brls/highlight/corner_radius", 14.0f);
+    brls::getStyle().addMetric("brls/highlight/shadow_opacity", 0.0f);
 }
 
 void register_views() {
@@ -70,6 +97,7 @@ bool run_borealis_ui() {
     brls::Application::createWindow(newpipe::tr("app/title"));
     brls::Application::setGlobalQuit(false);
     configure_theme();
+    newpipe::set_system_locale(brls::Application::getLocale());
 
     newpipe::log_line("main: register XML views");
     register_views();

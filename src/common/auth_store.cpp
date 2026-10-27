@@ -203,7 +203,7 @@ std::optional<AuthSession> parse_auth_source(
     const std::string trimmed = trim(raw);
     if (trimmed.empty()) {
         if (error_message) {
-            *error_message = "인증 파일이 비어 있습니다";
+            *error_message = "Auth file is empty";
         }
         return std::nullopt;
     }
@@ -268,7 +268,7 @@ std::optional<AuthSession> parse_auth_source(
 
     if (cookie_header.empty() || sapisid.empty()) {
         if (error_message) {
-            *error_message = "쿠키에서 SAPISID 계열 값을 찾지 못했습니다";
+            *error_message = "No SAPISID cookie found";
         }
         return std::nullopt;
     }
@@ -395,7 +395,7 @@ bool AuthStore::load(std::string* error_message) {
     const auto session = parse_auth_source(raw, "saved session", default_auth_session_path(), &parse_error);
     if (!session.has_value()) {
         if (error_message) {
-            *error_message = parse_error.empty() ? "저장된 세션 파일 파싱 실패" : parse_error;
+            *error_message = parse_error.empty() ? "Could not read the saved session" : parse_error;
         }
         return false;
     }
@@ -437,7 +437,7 @@ bool AuthStore::update_from_cookie_header(
     const auto session = parse_auth_source(cookie_header, source_label, {}, &parse_error);
     if (!session.has_value()) {
         if (error_message) {
-            *error_message = parse_error.empty() ? "쿠키 파싱 실패" : parse_error;
+            *error_message = parse_error.empty() ? "Could not read the cookies" : parse_error;
         }
         return false;
     }
@@ -465,7 +465,7 @@ bool AuthStore::import_from_file(const std::string& file_path, std::string* erro
     std::string raw;
     if (!read_text_file(resolved_path, raw)) {
         if (error_message) {
-            *error_message = "인증 파일을 열 수 없습니다: " + resolved_path;
+            *error_message = "Cannot open auth file: " + resolved_path;
         }
         return false;
     }
@@ -474,7 +474,7 @@ bool AuthStore::import_from_file(const std::string& file_path, std::string* erro
     const auto session = parse_auth_source(raw, "imported file", resolved_path, &parse_error);
     if (!session.has_value()) {
         if (error_message) {
-            *error_message = parse_error.empty() ? "인증 파일 파싱 실패" : parse_error;
+            *error_message = parse_error.empty() ? "Could not read the auth file" : parse_error;
         }
         return false;
     }
@@ -508,7 +508,7 @@ bool AuthStore::clear(std::string* error_message) {
         std::ifstream existing(default_auth_session_path());
         if (existing.good()) {
             if (error_message) {
-                *error_message = "세션 파일 삭제 실패";
+                *error_message = "Could not delete the session file";
             }
             return false;
         }
@@ -533,7 +533,7 @@ std::vector<HttpHeader> AuthStore::build_youtube_headers(
 
     if (!session_copy.has_cookie()) {
         if (error_message) {
-            *error_message = "로그인 세션이 없습니다";
+            *error_message = "Not signed in";
         }
         return {};
     }
@@ -572,7 +572,7 @@ bool AuthStore::persist_session(std::string* error_message) {
 
     if (!write_text_file(default_auth_session_path(), root.dump(2))) {
         if (error_message) {
-            *error_message = "세션 파일 저장 실패";
+            *error_message = "Could not save the session file";
         }
         return false;
     }
@@ -600,7 +600,7 @@ std::optional<DeviceLoginCode> AuthStore::start_device_login(
     const auto root = post_oauth_json(client, kDeviceCodeUrl, body);
     if (!root.has_value() || !root->contains("device_code") || !root->contains("user_code")) {
         if (error_message) {
-            *error_message = "로그인 코드 요청 실패";
+            *error_message = "Could not get a sign-in code";
         }
         return std::nullopt;
     }
@@ -643,11 +643,11 @@ DeviceLoginStatus AuthStore::poll_device_login(
         logf("auth: device login failed error=%s", error.c_str());
         if (error_message) {
             if (error == "expired_token") {
-                *error_message = "로그인 코드가 만료되었습니다";
+                *error_message = "The sign-in code expired";
             } else if (error == "access_denied") {
-                *error_message = "로그인이 거부되었습니다";
+                *error_message = "Sign-in was denied";
             } else {
-                *error_message = "로그인 실패: " + error;
+                *error_message = "Sign-in failed: " + error;
             }
         }
         return DeviceLoginStatus::Failed;
@@ -682,7 +682,7 @@ std::optional<std::string> AuthStore::oauth_access_token(
         std::lock_guard<std::mutex> lock(this->mutex_);
         if (!this->session_.has_oauth()) {
             if (error_message) {
-                *error_message = "로그인 세션이 없습니다";
+                *error_message = "Not signed in";
             }
             return std::nullopt;
         }
@@ -705,7 +705,7 @@ std::optional<std::string> AuthStore::oauth_access_token(
             root.has_value() ? root->value("error", std::string()) : std::string("network");
         logf("auth: token refresh failed error=%s", error.c_str());
         if (error_message) {
-            *error_message = "로그인 토큰 갱신 실패: " + error;
+            *error_message = "Could not refresh the sign-in: " + error;
         }
         return std::nullopt;
     }

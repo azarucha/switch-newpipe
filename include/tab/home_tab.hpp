@@ -23,11 +23,13 @@ private:
     void scheduleLoadHome(long delay_ms);
     void buildGrid();
     void cycleKiosk();
+    void buildChips();
     bool allowInitialInput() const;
     void playStream(const newpipe::StreamItem& item);
     void openStream(const newpipe::StreamItem& item);
 
     BRLS_BIND(brls::Label, statusLabel, "home/status");
+    BRLS_BIND(brls::Box, chipsBox, "home/chips");
     BRLS_BIND(brls::ProgressSpinner, spinner, "home/spinner");
     BRLS_BIND(brls::ScrollingFrame, scrollFrame, "home/scroll");
     BRLS_BIND(brls::Box, gridBox, "home/grid");

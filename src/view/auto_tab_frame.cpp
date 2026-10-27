@@ -620,15 +620,18 @@ const std::string autoSidebarItemXML = R"xml(
 
 const std::string autoSidebarItemPlainXML = R"xml(
     <brls:Box
-        highlightCornerRadius="8"
-        cornerRadius="4"
+        highlightCornerRadius="12"
+        cornerRadius="12"
         hideHighlightBackground="true"
         wireframe="false"
         width="auto"
         direction="rightToLeft"
         height="auto"
-        marginLeft="8"
-        marginRight="8"
+        marginLeft="10"
+        marginRight="10"
+        marginBottom="6"
+        paddingTop="12"
+        paddingBottom="10"
         focusable="true" >
 
         <brls:Box
@@ -645,15 +648,17 @@ const std::string autoSidebarItemPlainXML = R"xml(
                 wireframe="false"
                 visibility="gone"
                 id="autoSidebar/item_icon"
-                width="26"
-                height="26"/>
+                width="30"
+                height="30"
+                marginBottom="6"/>
 
             <brls:Label
                 wireframe="false"
                 id="autoSidebar/item_label"
                 width="auto"
                 height="auto"
-                fontSize="22"
+                fontSize="14"
+                singleLine="true"
                 horizontalAlign="center"/>
 
             <brls:Label

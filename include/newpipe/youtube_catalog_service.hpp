@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "nlohmann/json.hpp"
 #include "newpipe/auth_store.hpp"
 #include "newpipe/catalog_service.hpp"
 #include "newpipe/http_client.hpp"
@@ -39,6 +40,9 @@ public:
     std::optional<HomeFeed> get_playlist_feed(const StreamItem& item) const;
     std::optional<CommentPage> get_comments(const StreamItem& item) const;
     std::optional<HomeFeed> get_playlist_continuation(const std::string& token) const;
+    // The signed-in user's playlists (Watch later, Liked videos, own playlists).
+    std::optional<HomeFeed> get_library_playlists() const;
+    std::optional<HomeFeed> get_playlist_by_id(const std::string& playlist_id) const;
     std::optional<CommentPage> get_comments_continuation(const std::string& token) const;
     SearchResults search(const std::string& query) const override;
     std::optional<StreamDetail> get_stream_detail(const std::string& url) const override;
@@ -49,6 +53,7 @@ private:
         const std::string& title,
         const std::string& query,
         bool allow_short_videos) const;
+    std::optional<nlohmann::json> fetch_tv_browse(const nlohmann::json& request) const;
     std::optional<HomeFeed> fetch_tv_browse_feed(
         const std::string& browse_id,
         const std::string& title,

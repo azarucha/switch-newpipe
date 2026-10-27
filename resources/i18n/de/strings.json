@@ -1,0 +1,297 @@
+{
+  "app": {
+    "title": "Switch-NewPipe",
+    "home": "Start",
+    "search": "Suche",
+    "subscriptions": "Abos",
+    "library": "Bibliothek",
+    "settings": "Optionen",
+    "info_body": "Switch-NewPipe\nVersion: {}\n\nYouTube-Startseite, Suche, Abos, Playlists, Downloads und Wiedergabe direkt auf der Switch.\nQualität, Start-Tab, Startseiten-Kategorie, Shorts-Filter und Sprache stellst du unter Optionen ein.",
+    "playback_failed": "Wiedergabe fehlgeschlagen: {}"
+  },
+  "hints": {
+    "ok": "OK",
+    "cancel": "Abbrechen",
+    "back": "Zurück",
+    "exit": "Beenden",
+    "exit_hint": "Die App wird beendet",
+    "open": "Öffnen",
+    "on": "An",
+    "off": "Aus",
+    "delete": "Löschen",
+    "save": "Speichern",
+    "input": "Bitte eingeben …",
+    "submit": "Senden"
+  },
+  "common": {
+    "close": "Schließen",
+    "info": "Details",
+    "none": "Keine",
+    "refresh": "Aktualisieren",
+    "service_init_failed": "Start fehlgeschlagen: {}",
+    "count_with_title": "{}",
+    "load_more": "Mehr laden",
+    "no_more": "Keine weiteren Einträge"
+  },
+  "home": {
+    "category_action": "Kategorie",
+    "preparing": "Startseite wird geladen …",
+    "no_kiosk": "Keine Kategorie verfügbar",
+    "load_failed": "Startseite konnte nicht geladen werden",
+    "chips_hint": "Y  nächste Kategorie"
+  },
+  "search": {
+    "action": "Suchen",
+    "ime_title": "Suchbegriff eingeben",
+    "ime_subtitle": "Video oder Kanal",
+    "prompt": "X drücken, um YouTube zu durchsuchen",
+    "no_results": "Keine Ergebnisse für „{}“",
+    "results_count": "Ergebnisse für „{}“"
+  },
+  "subscriptions": {
+    "session_action": "Anmelden",
+    "session_load_failed": "Anmeldung konnte nicht geladen werden",
+    "session_load_failed_body": "Drücke RB und melde dich neu an.",
+    "feed_load_failed": "Abos konnten nicht geladen werden",
+    "feed_load_failed_body": "Du bist angemeldet, aber YouTube hat keine Abos geliefert.\nDrücke X zum Aktualisieren oder RB, um dich neu anzumelden.",
+    "current_source": "Aktuelle Quelle:\n{}",
+    "session_prefix": "Angemeldet: {}",
+    "controls": "",
+    "signed_out_title": "Melde dich an, um deine Abos zu sehen",
+    "signed_out_body": "Drücke RB und wähle „Mit Code anmelden“. Dann gibst du den angezeigten Code am Handy auf google.com/device ein.\n\nAlternativ kannst du Cookies aus {} importieren.",
+    "session_dialog": {
+      "saved": "Du bist angemeldet.\n\nQuelle: {}",
+      "signed_out": "Du bist nicht angemeldet.\n\nCookie-Datei für den Import:\n{}",
+      "load_file": "Datei laden",
+      "input_cookie": "Cookie eingeben",
+      "ime_title": "Cookie einfügen",
+      "ime_subtitle": "Cookie-Header oder einzeiliges JSON",
+      "logout": "Abmelden",
+      "load_file_done": "Anmeldedatei importiert",
+      "load_file_failed": "Anmeldedatei konnte nicht importiert werden",
+      "logout_done": "Abgemeldet",
+      "logout_failed": "Abmelden fehlgeschlagen",
+      "empty_input": "Leere Eingabe ignoriert",
+      "save_cookie_done": "Cookie gespeichert",
+      "save_cookie_failed": "Cookie konnte nicht gespeichert werden",
+      "device_login": "Mit Code anmelden"
+    },
+    "device_login": {
+      "requesting": "Anmeldecode wird angefordert …",
+      "body": "Öffne am Handy oder PC\n{}\n\nund gib diesen Code ein:\n\n{}\n\nDas Fenster schließt sich von selbst, sobald du bestätigt hast.",
+      "done": "Bei YouTube angemeldet",
+      "failed": "Anmeldung fehlgeschlagen",
+      "expired": "Der Code ist abgelaufen. Bitte versuch es noch einmal."
+    }
+  },
+  "library": {
+    "section_action": "Bereich",
+    "clear_action": "Leeren",
+    "favorites": "Gespeichert",
+    "history": "Verlauf",
+    "playlists": "Playlists",
+    "downloads": "Downloads",
+    "chips_hint": "LB  nächster Bereich",
+    "favorites_empty": "Videos, die du speicherst, erscheinen hier.\nÖffne ein Video und wähle „Speichern“.",
+    "history_empty": "Videos, die du ansiehst, erscheinen hier.",
+    "playlists_empty": "Noch keine Playlists.",
+    "downloads_empty": "Heruntergeladene Videos erscheinen hier.\nÖffne ein Video und wähle „Download“.",
+    "controls": "",
+    "downloads_controls": "",
+    "clear_failed": "Bibliothek konnte nicht geleert werden",
+    "favorites_cleared": "Gespeicherte Videos gelöscht",
+    "history_cleared": "Verlauf gelöscht",
+    "downloads_clear_hint": "Drücke Y auf einem Video, um es zu löschen",
+    "download_done": "{}p • offline",
+    "download_progress": "Wird geladen … {} %",
+    "download_queued": "Wartet",
+    "download_failed": "Fehlgeschlagen • A für neuen Versuch",
+    "download_retry": "Download neu gestartet",
+    "download_not_ready": "Wird noch heruntergeladen",
+    "download_delete": "Löschen",
+    "download_delete_confirm": "Diesen Download löschen?\n\n{}"
+  },
+  "settings": {
+    "reset_action": "Standard",
+    "reset_failed": "Einstellungen konnten nicht zurückgesetzt werden",
+    "reset_done": "Standardeinstellungen wiederhergestellt",
+    "language": {
+      "title": "Sprache",
+      "save_failed": "Sprache konnte nicht gespeichert werden",
+      "saved": "Sprache gespeichert. Starte die App neu, damit sie überall gilt.",
+      "options": {
+        "auto": "Systemsprache",
+        "korean": "한국어",
+        "english": "English",
+        "german": "Deutsch"
+      }
+    },
+    "playback_quality": {
+      "title": "Wiedergabequalität",
+      "save_failed": "Qualität konnte nicht gespeichert werden",
+      "saved": "Qualität gespeichert",
+      "options": {
+        "best": "Auto (TV 1080p / Handheld 720p)",
+        "hd_1080": "1080p",
+        "hd_720": "720p",
+        "low_320": "360p"
+      }
+    },
+    "startup_tab": {
+      "title": "Start-Tab",
+      "save_failed": "Start-Tab konnte nicht gespeichert werden",
+      "saved": "Gilt ab dem nächsten Start"
+    },
+    "home_kiosk": {
+      "title": "Startseiten-Kategorie",
+      "save_failed": "Kategorie konnte nicht gespeichert werden",
+      "saved": "Gilt beim nächsten Aktualisieren",
+      "options": {
+        "recommended": "Empfohlen",
+        "live": "Live",
+        "music": "Musik",
+        "gaming": "Gaming"
+      }
+    },
+    "hide_shorts": {
+      "title": "Shorts ausblenden",
+      "save_failed": "Einstellung konnte nicht gespeichert werden",
+      "enabled": "Shorts werden ausgeblendet",
+      "disabled": "Shorts werden wieder angezeigt"
+    },
+    "session": {
+      "title": "Anmeldung",
+      "load_failed": "Anmeldung konnte nicht geladen werden",
+      "saved": "Angemeldet",
+      "signed_out": "Nicht angemeldet",
+      "dialog": {
+        "load_failed": "Anmeldung konnte nicht geladen werden\n\n{}",
+        "signed_out": "Du bist nicht angemeldet.\n\nÖffne den Tab „Abos“ und drücke RB.",
+        "saved": "Du bist angemeldet.\n\nName: {}\nDatei: {}",
+        "source": "Quelle: {}"
+      }
+    },
+    "storage": {
+      "title": "Speicherorte",
+      "detail": "Einstellungen / Anmeldung / Bibliothek",
+      "dialog": {
+        "body": "Einstellungen:\n{}\n\nAnmeldung:\n{}\n\nCookie-Import:\n{}\n\nBibliothek:\n{}"
+      }
+    }
+  },
+  "detail": {
+    "play_action": "Abspielen",
+    "channel_action": "Kanal",
+    "related_action": "Ähnliche Videos",
+    "more_action": "Mehr",
+    "favorite_action": "Speichern",
+    "unfavorite_action": "Gespeichert",
+    "default_title": "Video",
+    "no_description": "Keine Beschreibung vorhanden.",
+    "status_play": "",
+    "status_channel": "",
+    "status_related": "",
+    "status_more": "",
+    "status_comments": "",
+    "status_favorite": "",
+    "playback_url_failed": "Video konnte nicht geöffnet werden",
+    "channel_load_failed": "Kanal konnte nicht geladen werden",
+    "related_load_failed": "Ähnliche Videos konnten nicht geladen werden",
+    "extras_title": "Mehr",
+    "playlist_action": "Playlist",
+    "comments_action": "Kommentare",
+    "playlist_load_failed": "Playlist konnte nicht geladen werden",
+    "comments_load_failed": "Kommentare konnten nicht geladen werden",
+    "favorite_save_failed": "Speichern fehlgeschlagen",
+    "favorite_added": "Gespeichert",
+    "favorite_removed": "Nicht mehr gespeichert",
+    "download_action": "Download",
+    "download_started": "Download gestartet – siehe Bibliothek › Downloads",
+    "download_failed": "Download konnte nicht gestartet werden"
+  },
+  "feed": {
+    "subtitle": "A Abspielen • Y Details • B Zurück",
+    "subtitle_more": "A Abspielen • Y Details • X Mehr laden • B Zurück"
+  },
+  "comments": {
+    "title": "Kommentare",
+    "subtitle": "B Zurück",
+    "subtitle_more": "X Mehr laden • B Zurück",
+    "verified": "Bestätigt",
+    "unknown_author": "Unbekannt",
+    "likes": "{} Mag ich",
+    "replies": "{} Antworten"
+  },
+  "player": {
+    "status": {
+      "paused": "Pausiert",
+      "live": "LIVE",
+      "playing": "Wird abgespielt",
+      "volume": "Lautstärke"
+    },
+    "osd_controls": "",
+    "hints": {
+      "menu": "X Einstellungen",
+      "pause": "A Pause",
+      "back": "B Zurück"
+    },
+    "menu": {
+      "quality": "Qualität",
+      "quality_auto": "Auto",
+      "quality_unavailable": "Bei diesem Video lässt sich die Qualität nicht ändern",
+      "captions": "Untertitel",
+      "captions_off": "Aus",
+      "captions_off_toast": "Untertitel aus",
+      "captions_failed": "Untertitel konnten nicht geladen werden",
+      "speed": "Wiedergabegeschwindigkeit",
+      "speed_normal": "Normal"
+    },
+    "osd": {
+      "auto": "Steuerung blendet sich aus",
+      "locked": "Steuerung bleibt sichtbar",
+      "audio_download_failed": "Ton konnte nicht geladen werden",
+      "audio_attach_failed": "Tonspur konnte nicht hinzugefügt werden",
+      "playback_ready": "",
+      "volume": "Lautstärke {} %",
+      "seek": "{} / {}",
+      "seek_unavailable": "In diesem Video kann nicht gespult werden",
+      "seek_live": "Livestream – Spulen nicht möglich",
+      "seek_buffer_limit": "Geladen bis {}"
+    },
+    "loading": {
+      "preparing_playback": "Video wird vorbereitet",
+      "opening_media_stream": "Video wird geöffnet",
+      "waiting_for_mpv_load": "Wiedergabe startet",
+      "opening_direct_media": "Datei wird geöffnet",
+      "non_youtube_url": "Offline-Video",
+      "direct_stream_ready": "Stream bereit",
+      "opening_live_stream": "Livestream wird geöffnet",
+      "direct_playback": "Direkte Wiedergabe",
+      "direct_dash_playback": "Direkte Wiedergabe",
+      "downloading_video_data": "Video wird geladen",
+      "received": "empfangen",
+      "starting_transfer": "Download startet",
+      "initial_buffer_ready": "Puffer bereit",
+      "download_complete": "Vollständig geladen",
+      "attaching_audio_track": "Ton wird hinzugefügt",
+      "stream_720_failed": "Stream fehlgeschlagen",
+      "fallback_safe_stream": "Wechsel zu einem sichereren Stream",
+      "playback_started": "Wird abgespielt",
+      "video_frame_ready": "Bereit",
+      "reading_stream_buffer": "Puffer wird gelesen",
+      "contacting_video_cdn": "Verbindung zu YouTube",
+      "buffering_first_frame": "Wird gepuffert",
+      "following_playlist_redirect": "Weiterleitung",
+      "resolving_youtube_stream": "Video wird geladen",
+      "contacting_player_api": "YouTube wird kontaktiert",
+      "selecting_playable_format": "Format wird gewählt",
+      "requesting_hls_stream": "Stream wird angefordert",
+      "requesting_avc_stream": "Stream wird angefordert",
+      "requesting_progressive_stream": "Stream wird angefordert",
+      "requesting_ump_stream": "Stream wird angefordert"
+    }
+  },
+  "stream": {
+    "live_badge": "LIVE"
+  }
+}

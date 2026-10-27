@@ -22,6 +22,12 @@ enum class PlaybackQualityMode {
 // operation mode (docked -> 1080p, handheld -> 720p); on host it targets 1080p.
 int preferred_height_for_quality(PlaybackQualityMode mode);
 
+struct CaptionTrack {
+    std::string language;
+    std::string name;
+    std::string url;  // WebVTT
+};
+
 struct ResolvedPlayback {
     std::string stream_url;
     std::string referer;
@@ -39,6 +45,7 @@ struct ResolvedPlayback {
     std::string fallback_external_audio_url;
     bool use_ump = false;
     bool is_live = false;
+    std::vector<CaptionTrack> captions;
 };
 
 // Segment lists of one HLS variant, for downloading a video to the SD card.

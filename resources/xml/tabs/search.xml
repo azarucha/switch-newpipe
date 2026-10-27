@@ -2,18 +2,18 @@
     width="auto"
     height="auto"
     axis="column"
-    paddingTop="20"
-    paddingLeft="20"
-    paddingRight="20">
+    paddingTop="26"
+    paddingLeft="34"
+    paddingRight="16">
 
     <brls:Label
         id="search/status"
         width="auto"
         height="auto"
-        text="X 버튼으로 검색"
-        fontSize="20"
-        textColor="#EAEAEA"
-        marginBottom="12" />
+        text=""
+        fontSize="26"
+        textColor="#F1F1F1"
+        marginBottom="14" />
 
     <brls:ProgressSpinner
         id="search/spinner"
@@ -30,7 +30,9 @@
             id="search/grid"
             width="auto"
             height="auto"
-            axis="column" />
+            axis="column"
+            paddingTop="4"
+            paddingBottom="24" />
 
     </brls:ScrollingFrame>
 

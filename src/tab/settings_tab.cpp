@@ -9,11 +9,14 @@
 namespace {
 
 int language_selection(const std::string& value) {
-    if (value == "ko") {
+    if (value == "en-US") {
         return 1;
     }
-    if (value == "en-US") {
+    if (value == "de") {
         return 2;
+    }
+    if (value == "ko") {
+        return 3;
     }
     return 0;
 }
@@ -21,9 +24,11 @@ int language_selection(const std::string& value) {
 std::string language_from_selection(int selection) {
     switch (selection) {
         case 1:
-            return "ko";
-        case 2:
             return "en-US";
+        case 2:
+            return "de";
+        case 3:
+            return "ko";
         default:
             return "auto";
     }
@@ -130,8 +135,9 @@ SettingsTab::SettingsTab() {
         newpipe::tr("settings/language/title"),
         {
             newpipe::tr("settings/language/options/auto"),
-            newpipe::tr("settings/language/options/korean"),
             newpipe::tr("settings/language/options/english"),
+            newpipe::tr("settings/language/options/german"),
+            newpipe::tr("settings/language/options/korean"),
         },
         0,
         [this](int selection) {

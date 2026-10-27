@@ -10,7 +10,7 @@
 #include "view/tab_focus.hpp"
 
 namespace {
-constexpr size_t kGridColumns = 4;
+constexpr size_t kGridColumns = 3;
 }
 
 SearchTab::SearchTab() : service_() {
@@ -105,7 +105,7 @@ void SearchTab::buildGrid() {
     gridBox->clearViews();
     for (size_t i = 0; i < items_.size(); i += kGridColumns) {
         auto* row = new brls::Box(brls::Axis::ROW);
-        row->setMarginBottom(8);
+        row->setMarginBottom(22);
 
         for (size_t j = i; j < i + kGridColumns && j < items_.size(); j++) {
             auto* card = new StreamCard();

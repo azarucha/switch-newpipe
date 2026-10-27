@@ -1,6 +1,7 @@
 #include "newpipe/settings_store.hpp"
 
 #include <fstream>
+#include <mutex>
 #include <iterator>
 
 #include "nlohmann/json.hpp"
@@ -50,7 +51,7 @@ std::string sanitize_startup_tab(std::string value) {
 }
 
 std::string sanitize_language(std::string value) {
-    for (const char* allowed : {"auto", "ko", "en-US"}) {
+    for (const char* allowed : {"auto", "ko", "en-US", "de"}) {
         if (value == allowed) {
             return value;
         }
@@ -142,7 +143,7 @@ bool SettingsStore::load(std::string* error_message) {
     const json root = json::parse(raw, nullptr, false);
     if (root.is_discarded() || !root.is_object()) {
         if (error_message) {
-            *error_message = "설정 파일 파싱 실패";
+            *error_message = "Could not read the settings file";
         }
         return false;
     }
@@ -279,7 +280,7 @@ bool SettingsStore::persist(std::string* error_message) {
 
     if (!write_text_file(default_settings_store_path(), root.dump(2))) {
         if (error_message) {
-            *error_message = "설정 저장 실패";
+            *error_message = "Could not save the settings";
         }
         return false;
     }
@@ -288,6 +289,31 @@ bool SettingsStore::persist(std::string* error_message) {
         error_message->clear();
     }
     return true;
+}
+
+namespace {
+std::mutex g_system_locale_mutex;
+std::string g_system_locale = "en-US";
+}  // namespace
+
+void set_system_locale(const std::string& locale) {
+    std::lock_guard<std::mutex> lock(g_system_locale_mutex);
+    g_system_locale = locale;
+}
+
+ContentLocale content_locale() {
+    std::string language = SettingsStore::instance().settings().language;
+    if (language == "auto") {
+        std::lock_guard<std::mutex> lock(g_system_locale_mutex);
+        language = g_system_locale;
+    }
+    if (language.rfind("de", 0) == 0) {
+        return {"de", "DE"};
+    }
+    if (language.rfind("ko", 0) == 0) {
+        return {"ko", "KR"};
+    }
+    return {"en", "US"};
 }
 
 }  // namespace newpipe

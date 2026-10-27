@@ -1,53 +1,77 @@
 <brls:Box
-    width="24%"
+    width="32%"
     height="auto"
     axis="column"
-    marginRight="8"
-    paddingLeft="8"
-    paddingRight="8"
-    paddingTop="6"
-    paddingBottom="6"
+    marginRight="18"
+    padding="6"
     focusable="true"
-    cornerRadius="12"
-    backgroundColor="#1E2023">
+    cornerRadius="14"
+    highlightCornerRadius="14"
+    hideHighlightBackground="true">
 
-    <brls:Image
-        id="stream/thumbnail"
+    <brls:Box
         width="auto"
-        height="110"
-        scalingType="fill"
-        cornerRadius="8"
-        marginBottom="6" />
+        height="188"
+        cornerRadius="12"
+        backgroundColor="#272727">
+
+        <brls:Image
+            id="stream/thumbnail"
+            width="100%"
+            height="100%"
+            scalingType="fill"
+            cornerRadius="12" />
+
+        <brls:Box
+            id="stream/badge"
+            width="auto"
+            height="auto"
+            positionType="absolute"
+            positionRight="8"
+            positionBottom="8"
+            paddingLeft="6"
+            paddingRight="6"
+            paddingTop="2"
+            paddingBottom="2"
+            cornerRadius="4"
+            backgroundColor="#000000CC">
+
+            <brls:Label
+                id="stream/badge_label"
+                width="auto"
+                height="auto"
+                fontSize="13"
+                singleLine="true"
+                textColor="#FFFFFF" />
+        </brls:Box>
+    </brls:Box>
 
     <brls:Label
         id="stream/title"
         width="auto"
         height="auto"
-        fontSize="13"
-        textColor="#FFFFFF" />
+        marginTop="10"
+        fontSize="16"
+        lineHeight="1.3"
+        textColor="#F1F1F1" />
 
     <brls:Label
         id="stream/channel"
         width="auto"
         height="auto"
-        fontSize="11"
-        textColor="#F44336"
-        marginTop="3" />
+        marginTop="4"
+        fontSize="13"
+        singleLine="true"
+        textColor="#AAAAAA" />
 
-    <brls:Box width="auto" height="auto" axis="row" marginTop="2" justifyContent="spaceBetween">
-        <brls:Label
-            id="stream/left_meta"
-            width="auto"
-            height="auto"
-            fontSize="10"
-            textColor="#909090" />
-
-        <brls:Label
-            id="stream/right_meta"
-            width="auto"
-            height="auto"
-            fontSize="10"
-            textColor="#909090" />
-    </brls:Box>
+    <brls:Label
+        id="stream/meta"
+        width="auto"
+        height="auto"
+        marginTop="1"
+        marginBottom="4"
+        fontSize="13"
+        singleLine="true"
+        textColor="#AAAAAA" />
 
 </brls:Box>

@@ -7,12 +7,14 @@
 #include <clocale>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <chrono>
 #include <condition_variable>
 #include <fcntl.h>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -30,11 +32,13 @@
 #include <mpv/render_gl.h>
 #include <mpv/stream_cb.h>
 
+#include "newpipe/http_client.hpp"
 #include "newpipe/i18n.hpp"
 #include "newpipe/log.hpp"
 #include "newpipe/settings_store.hpp"
 #include "newpipe/ump.hpp"
 #include "newpipe/youtube_resolver.hpp"
+#include "player_ui.hpp"
 
 namespace newpipe {
 namespace {
@@ -239,6 +243,107 @@ double clamp_double(double value, double min_value, double max_value) {
     return std::max(min_value, std::min(max_value, value));
 }
 
+float clamp_float(float value, float low, float high) {
+    return std::max(low, std::min(value, high));
+}
+
+// "1080p HLS" -> "1080p"
+std::string short_quality_label(const std::string& label) {
+    const size_t p = label.find('p');
+    if (p == std::string::npos || p == 0 || !std::isdigit(static_cast<unsigned char>(label[0]))) {
+        return {};
+    }
+    return label.substr(0, p + 1);
+}
+
+struct CaptionCue {
+    double start = 0.0;
+    double end = 0.0;
+    std::string text;
+};
+
+// "00:01:02.500" or "01:02.500"
+double parse_vtt_time(const std::string& value) {
+    double total = 0.0;
+    size_t start = 0;
+    while (start < value.size()) {
+        const size_t colon = value.find(':', start);
+        const std::string part = value.substr(start, colon == std::string::npos ? std::string::npos : colon - start);
+        total = total * 60.0 + std::atof(part.c_str());
+        if (colon == std::string::npos) {
+            break;
+        }
+        start = colon + 1;
+    }
+    return total;
+}
+
+std::string strip_vtt_markup(const std::string& line) {
+    std::string out;
+    bool in_tag = false;
+    for (char ch : line) {
+        if (ch == '<') {
+            in_tag = true;
+        } else if (ch == '>') {
+            in_tag = false;
+        } else if (!in_tag) {
+            out.push_back(ch);
+        }
+    }
+    const std::pair<const char*, const char*> entities[] = {
+        {"&amp;", "&"}, {"&lt;", "<"}, {"&gt;", ">"}, {"&quot;", "\""}, {"&#39;", "'"}, {"&nbsp;", " "}};
+    for (const auto& [from, to] : entities) {
+        size_t pos = 0;
+        while ((pos = out.find(from, pos)) != std::string::npos) {
+            out.replace(pos, std::strlen(from), to);
+            pos += std::strlen(to);
+        }
+    }
+    return out;
+}
+
+std::vector<CaptionCue> parse_vtt(const std::string& body) {
+    std::vector<CaptionCue> cues;
+    std::stringstream stream(body);
+    std::string line;
+    CaptionCue* current = nullptr;
+    while (std::getline(stream, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        const size_t arrow = line.find("-->");
+        if (arrow != std::string::npos) {
+            CaptionCue cue;
+            const std::string left = line.substr(0, arrow);
+            std::string right = line.substr(arrow + 3);
+            const size_t right_start = right.find_first_not_of(' ');
+            right = right_start == std::string::npos ? std::string() : right.substr(right_start);
+            cue.start = parse_vtt_time(left.substr(0, left.find_last_not_of(' ') + 1));
+            cue.end = parse_vtt_time(right.substr(0, right.find(' ')));
+            cues.push_back(cue);
+            current = &cues.back();
+            continue;
+        }
+        if (line.empty()) {
+            current = nullptr;
+            continue;
+        }
+        if (current) {
+            const std::string text = strip_vtt_markup(line);
+            if (text.find_first_not_of(' ') == std::string::npos) {
+                continue;
+            }
+            if (!current->text.empty()) {
+                current->text += "\n";
+            }
+            current->text += text;
+        }
+    }
+    cues.erase(std::remove_if(cues.begin(), cues.end(), [](const CaptionCue& cue) { return cue.text.empty(); }),
+               cues.end());
+    return cues;
+}
+
 std::string format_playback_time(double seconds) {
     if (!std::isfinite(seconds) || seconds < 0.0) {
         return "--:--";
@@ -253,7 +358,7 @@ std::string format_playback_time(double seconds) {
     if (hours > 0) {
         std::snprintf(buffer, sizeof(buffer), "%d:%02d:%02d", hours, minutes, secs);
     } else {
-        std::snprintf(buffer, sizeof(buffer), "%02d:%02d", minutes, secs);
+        std::snprintf(buffer, sizeof(buffer), "%d:%02d", minutes, secs);
     }
     return buffer;
 }
@@ -455,7 +560,7 @@ public:
         appletSetMediaPlaybackState(true);
         set_loading_status(
             newpipe::tr("player/loading/preparing_playback"),
-            clamp_text(uppercase_ascii(request_.title), 40));
+            clamp_text(request_.title, 60));
 
         if (!init_sdl(error)) {
             logf("player: init_sdl failed error=%s", error.c_str());
@@ -476,7 +581,7 @@ public:
         set_loading_status(
             newpipe::tr("player/loading/opening_media_stream"),
             active_quality_label_.empty() ? newpipe::tr("player/loading/waiting_for_mpv_load")
-                                          : clamp_text(uppercase_ascii(active_quality_label_), 40));
+                                          : clamp_text(active_quality_label_, 40));
         if (!load_file(error)) {
             logf("player: load_file failed error=%s", error.c_str());
             return false;
@@ -700,8 +805,8 @@ private:
 
     void set_loading_status(const std::string& title, const std::string& detail) {
         std::lock_guard<std::mutex> lock(status_mutex_);
-        const std::string normalized_title = clamp_text(uppercase_ascii(title), 40);
-        const std::string normalized_detail = clamp_text(uppercase_ascii(detail), 48);
+        const std::string normalized_title = clamp_text(title, 60);
+        const std::string normalized_detail = clamp_text(detail, 70);
         if (normalized_title == loading_title_ && normalized_detail == loading_detail_) {
             return;
         }
@@ -716,7 +821,7 @@ private:
     }
 
     void show_osd_message(const std::string& message, int duration_ms = 2500) {
-        osd_message_ = clamp_text(uppercase_ascii(message), 52);
+        osd_message_ = clamp_text(message, 80);
         osd_visible_until_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(duration_ms);
     }
 
@@ -725,7 +830,9 @@ private:
     }
 
     bool should_draw_osd() const {
-        return first_frame_rendered_ && (osd_pinned_ || last_pause_state_ || is_temporary_osd_visible());
+        return first_frame_rendered_
+            && (osd_pinned_ || last_pause_state_ || is_temporary_osd_visible() || menu_level_ != kMenuClosed
+                || scrub_active_);
     }
 
     void refresh_osd_snapshot(bool force = false) {
@@ -758,8 +865,8 @@ private:
 
         char* media_title = mpv_get_property_string(mpv_, "media-title");
         if (media_title) {
-            const std::string normalized = clamp_text(uppercase_ascii(media_title), 52);
-            if (!normalized.empty()) {
+            const std::string normalized = clamp_text(media_title, 120);
+            if (!normalized.empty() && request_.title.empty()) {
                 osd_title_ = normalized;
             }
             mpv_free(media_title);
@@ -796,140 +903,6 @@ private:
              rate.empty() ? "none" : rate.c_str(),
              ao.empty() ? "none" : ao.c_str(),
              device.empty() ? "none" : device.c_str());
-    }
-
-    void toggle_osd(bool& force_redraw) {
-        osd_pinned_ = !osd_pinned_;
-        show_osd_message(
-            osd_pinned_ ? newpipe::tr("player/osd/locked")
-                        : newpipe::tr("player/osd/auto"),
-            1800);
-        force_redraw = true;
-    }
-
-    void render_playback_osd(int width, int height) {
-        refresh_osd_snapshot();
-        if (!should_draw_osd()) {
-            return;
-        }
-
-        const int margin = std::max(20, width / 40);
-        const int top_panel_width = std::min(width - margin * 2, width * 3 / 4);
-        const int top_panel_height = std::max(92, height / 8);
-        const int top_panel_x = margin;
-        const int top_panel_y = margin;
-        const int bottom_panel_width = width - margin * 2;
-        const int bottom_panel_height = std::max(108, height / 6);
-        const int bottom_panel_x = margin;
-        const int bottom_panel_y = height - bottom_panel_height - margin;
-
-        fill_rect(top_panel_x, top_panel_y, top_panel_width, top_panel_height, height, 0.05f, 0.05f, 0.05f);
-        fill_rect(
-            bottom_panel_x, bottom_panel_y, bottom_panel_width, bottom_panel_height, height, 0.04f, 0.04f, 0.04f);
-
-        const int title_scale = std::max(2, height / 300);
-        const int meta_scale = std::max(2, height / 360);
-        const std::string title = clamp_text(
-            osd_title_.empty() ? clamp_text(uppercase_ascii(request_.title), 52) : osd_title_, 52);
-        const std::string playback_state = last_pause_state_ ? newpipe::tr("player/status/paused")
-            : active_is_live_ ? newpipe::tr("player/status/live")
-                              : newpipe::tr("player/status/playing");
-        const std::string status_line = is_temporary_osd_visible() && !osd_message_.empty()
-            ? osd_message_
-            : clamp_text(
-                  playback_state
-                      + (active_quality_label_.empty()
-                             ? ""
-                             : "  " + clamp_text(uppercase_ascii(active_quality_label_), 18))
-                      + "  " + newpipe::tr("player/status/volume")
-                      + " " + std::to_string(static_cast<int>(std::lround(last_volume_))),
-                  52);
-
-        if (!title.empty()) {
-            draw_text_line(
-                top_panel_x + 18,
-                top_panel_y + 16,
-                title_scale,
-                height,
-                title,
-                0.96f,
-                0.96f,
-                0.96f);
-        }
-        draw_text_line(
-            top_panel_x + 18,
-            top_panel_y + 16 + title_scale * 9,
-            meta_scale,
-            height,
-            status_line,
-            last_pause_state_ ? 1.0f : 0.78f,
-            last_pause_state_ ? 0.78f : 0.78f,
-            last_pause_state_ ? 0.32f : 0.78f);
-
-        const int bar_x = bottom_panel_x + 20;
-        const int bar_y = bottom_panel_y + 18;
-        const int bar_width = bottom_panel_width - 40;
-        const int bar_height = std::max(10, height / 72);
-        fill_rect(bar_x, bar_y, bar_width, bar_height, height, 0.18f, 0.18f, 0.18f);
-
-        if (active_is_live_) {
-            fill_rect(bar_x, bar_y, std::max(72, bar_width / 5), bar_height, height, 0.92f, 0.20f, 0.18f);
-        } else if (last_duration_ > 1.0) {
-            // How far the cache reaches, i.e. how far a seek can currently land.
-            if (const auto buffered = buffered_ratio()) {
-                fill_rect(
-                    bar_x,
-                    bar_y,
-                    static_cast<int>(std::round(bar_width * *buffered)),
-                    bar_height,
-                    height,
-                    0.42f,
-                    0.42f,
-                    0.42f);
-            }
-            const double ratio = clamp_double(last_time_pos_ / last_duration_, 0.0, 1.0);
-            fill_rect(bar_x, bar_y, static_cast<int>(std::round(bar_width * ratio)), bar_height, height, 0.95f, 0.95f, 0.95f);
-        }
-
-        const std::string left_time =
-            active_is_live_ ? newpipe::tr("player/status/live") : format_playback_time(last_time_pos_);
-        const std::string right_time =
-            active_is_live_ ? clamp_text(uppercase_ascii(active_quality_label_), 18) : format_playback_time(last_duration_);
-        const std::string center_line = clamp_text(newpipe::tr("player/osd_controls"), 52);
-
-        draw_text_line(bar_x, bar_y + bar_height + 14, meta_scale, height, left_time, 0.94f, 0.94f, 0.94f);
-        draw_text_line(
-            bar_x + std::max(0, (bar_width - measure_text_width(center_line, meta_scale)) / 2),
-            bar_y + bar_height + 14,
-            meta_scale,
-            height,
-            center_line,
-            0.62f,
-            0.62f,
-            0.62f);
-        draw_text_line(
-            bar_x + std::max(0, bar_width - measure_text_width(right_time, meta_scale)),
-            bar_y + bar_height + 14,
-            meta_scale,
-            height,
-            right_time,
-            0.82f,
-            0.82f,
-            0.82f);
-
-        const int volume_bar_y = bottom_panel_y + bottom_panel_height - 28;
-        const int volume_bar_width = bottom_panel_width / 4;
-        const int volume_bar_x = bottom_panel_x + bottom_panel_width - volume_bar_width - 20;
-        fill_rect(volume_bar_x, volume_bar_y, volume_bar_width, 10, height, 0.16f, 0.16f, 0.16f);
-        fill_rect(
-            volume_bar_x,
-            volume_bar_y,
-            static_cast<int>(std::round(volume_bar_width * clamp_double(last_volume_ / 100.0, 0.0, 1.0))),
-            10,
-            height,
-            0.72f,
-            0.72f,
-            0.72f);
     }
 
     bool prepare_stream(std::string& error) {
@@ -997,6 +970,7 @@ private:
         fallback_external_audio_url_ = resolved->fallback_external_audio_url;
         active_use_ump_ = resolved->use_ump;
         active_is_live_ = resolved->is_live;
+        captions_ = resolved->captions;
         if (!resolved->playlist_body.empty()) {
 #ifdef __SWITCH__
             active_local_media_path_ = "sdmc:/switch/switch_newpipe_selected.m3u8";
@@ -1898,6 +1872,14 @@ private:
 
         SDL_GL_MakeCurrent(window_, gl_context_);
         SDL_GL_SetSwapInterval(1);
+        {
+            int ui_width = width;
+            int ui_height = height;
+            SDL_GL_GetDrawableSize(window_, &ui_width, &ui_height);
+            if (!ui_.init(ui_height)) {
+                log_line("player: overlay renderer unavailable");
+            }
+        }
         SDL_GameControllerEventState(SDL_ENABLE);
 
         for (int i = 0; i < SDL_NumJoysticks(); i++) {
@@ -2185,12 +2167,17 @@ private:
                     running = false;
                 } else if (event.type == SDL_CONTROLLERBUTTONDOWN) {
                     handle_controller_button(event.cbutton.button, running, paused, force_redraw);
+                } else if (event.type == SDL_CONTROLLERBUTTONUP) {
+                    handle_controller_button_up(event.cbutton.button, running, paused, force_redraw);
                 } else if (!has_game_controller_ && event.type == SDL_JOYBUTTONDOWN) {
                     handle_joy_button(event.jbutton.button, running, paused, force_redraw);
+                } else if (!has_game_controller_ && event.type == SDL_JOYBUTTONUP) {
+                    handle_joy_button_up(event.jbutton.button, running, paused, force_redraw);
                 } else if (!has_game_controller_ && event.type == SDL_JOYHATMOTION) {
-                    handle_hat(event.jhat.value, force_redraw);
+                    handle_hat(event.jhat.value, running, paused, force_redraw);
                 }
             }
+            update_scrub(force_redraw);
 
             if (mpv_events_pending_.exchange(false) && !drain_mpv_events()) {
                 running = false;
@@ -2245,13 +2232,14 @@ private:
                     render_frame();
                     first_frame_rendered_ = true;
                     refresh_osd_snapshot(true);
-                    show_osd_message(newpipe::tr("player/osd/playback_ready"), 3500);
+                    osd_message_.clear();
+                    osd_visible_until_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(3500);
                     force_redraw = paused;
                     set_loading_status(
                         newpipe::tr("player/loading/playback_started"),
                         active_quality_label_.empty()
                             ? newpipe::tr("player/loading/video_frame_ready")
-                            : clamp_text(uppercase_ascii(active_quality_label_), 40));
+                            : clamp_text(active_quality_label_, 40));
                     continue;
                 }
 
@@ -2261,7 +2249,8 @@ private:
                 continue;
             }
 
-            bool should_render = force_redraw || frame_ready || paused || osd_pinned_ || is_temporary_osd_visible();
+            bool should_render = force_redraw || frame_ready || paused || osd_pinned_ || is_temporary_osd_visible()
+                || menu_level_ != kMenuClosed || scrub_active_;
             if (should_render) {
                 render_frame();
                 force_redraw = paused;
@@ -2271,130 +2260,6 @@ private:
             } else {
                 SDL_Delay(10);
             }
-        }
-    }
-
-    void handle_controller_button(Uint8 button, bool& running, bool& paused, bool& force_redraw) {
-        if (std::chrono::steady_clock::now() < player_input_ready_at_) {
-            logf("player: ignored early controller button=%u", static_cast<unsigned int>(button));
-            return;
-        }
-        if (!first_frame_rendered_ && button == SDL_CONTROLLER_BUTTON_A) {
-            log_line("player: ignored pause during loading");
-            return;
-        }
-        logf("player: controller button=%u", static_cast<unsigned int>(button));
-        switch (button) {
-            case SDL_CONTROLLER_BUTTON_A:
-                running = false;
-                break;
-            case SDL_CONTROLLER_BUTTON_B:
-                toggle_pause(paused, force_redraw);
-                break;
-            case SDL_CONTROLLER_BUTTON_X:
-            case SDL_CONTROLLER_BUTTON_Y:
-                toggle_osd(force_redraw);
-                break;
-            case SDL_CONTROLLER_BUTTON_DPAD_UP:
-                change_volume(5, force_redraw);
-                break;
-            case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-                change_volume(-5, force_redraw);
-                break;
-            case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
-                seek_relative(-kShortSeekSeconds, force_redraw);
-                break;
-            case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-                seek_relative(kShortSeekSeconds, force_redraw);
-                break;
-            case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
-                seek_relative(-kLongSeekSeconds, force_redraw);
-                break;
-            case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
-                seek_relative(kLongSeekSeconds, force_redraw);
-                break;
-            case SDL_CONTROLLER_BUTTON_BACK:
-                request_quality_change(running);
-                break;
-            default:
-                break;
-        }
-    }
-
-    // Cycles Best -> 1080p -> 720p -> 320p and restarts at the current position.
-    void request_quality_change(bool& running) {
-        if (!first_frame_rendered_ || !YouTubeResolver::is_youtube_url(request_.url)) {
-            return;
-        }
-        const int current = request_.quality_override >= 0
-            ? request_.quality_override
-            : static_cast<int>(SettingsStore::instance().settings().playback_quality);
-        PlaybackRequest next = request_;
-        next.quality_override = (current + 1) % 4;
-        next.start_seconds = active_is_live_ ? 0.0 : last_time_pos_;
-        logf("player: quality change %d -> %d at %.1f", current, next.quality_override, next.start_seconds);
-        restart_request_ = next;
-        running = false;
-    }
-
-    void handle_joy_button(Uint8 button, bool& running, bool& paused, bool& force_redraw) {
-        if (std::chrono::steady_clock::now() < player_input_ready_at_) {
-            logf("player: ignored early joystick button=%u", static_cast<unsigned int>(button));
-            return;
-        }
-        if (!first_frame_rendered_ && button == 0) {
-            log_line("player: ignored joystick pause during loading");
-            return;
-        }
-        logf("player: joystick button=%u", static_cast<unsigned int>(button));
-        switch (button) {
-            case 0:
-                running = false;
-                break;
-            case 1:
-                toggle_pause(paused, force_redraw);
-                break;
-            case 2:
-            case 3:
-                toggle_osd(force_redraw);
-                break;
-            case 13:
-                change_volume(5, force_redraw);
-                break;
-            case 15:
-                change_volume(-5, force_redraw);
-                break;
-            // HidNpadButton bit order: 6 L, 7 R, 12 Left, 14 Right.
-            case 12:
-                seek_relative(-kShortSeekSeconds, force_redraw);
-                break;
-            case 14:
-                seek_relative(kShortSeekSeconds, force_redraw);
-                break;
-            case 6:
-                seek_relative(-kLongSeekSeconds, force_redraw);
-                break;
-            case 7:
-                seek_relative(kLongSeekSeconds, force_redraw);
-                break;
-            // 11 is the minus button.
-            case 11:
-                request_quality_change(running);
-                break;
-            default:
-                break;
-        }
-    }
-
-    void handle_hat(Uint8 hat_value, bool& force_redraw) {
-        if (hat_value & SDL_HAT_UP) {
-            change_volume(5, force_redraw);
-        } else if (hat_value & SDL_HAT_DOWN) {
-            change_volume(-5, force_redraw);
-        } else if (hat_value & SDL_HAT_LEFT) {
-            seek_relative(-kShortSeekSeconds, force_redraw);
-        } else if (hat_value & SDL_HAT_RIGHT) {
-            seek_relative(kShortSeekSeconds, force_redraw);
         }
     }
 
@@ -2571,67 +2436,689 @@ private:
              limited ? 1 : 0);
     }
 
+    // ---- overlay (YouTube-style) -------------------------------------------
+
+    float ui_scale(int height) const {
+        return static_cast<float>(height) / 720.0f;
+    }
+
     void render_loading_screen(int phase) {
         int width = 1280;
         int height = 720;
         SDL_GL_GetDrawableSize(window_, &width, &height);
 
         glViewport(0, 0, width, height);
-        glClearColor(0.02f, 0.02f, 0.02f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        const int panel_w = width * 2 / 3;
-        const int panel_h = height / 3;
-        const int panel_x = (width - panel_w) / 2;
-        const int panel_y = (height - panel_h) / 2;
-        fill_rect(panel_x, panel_y, panel_w, panel_h, height, 0.10f, 0.10f, 0.10f);
+        const float s = ui_scale(height);
+        const float cx = width / 2.0f;
+        const float cy = height / 2.0f - 20.0f * s;
+        const float radius = 30.0f * s;
+        const float thickness = 4.0f * s;
 
-        const int cx = width / 2;
-        const int cy = height / 2 - height / 20;
-        const int radius = std::min(width, height) / 12;
-        const int dot_size = std::max(14, std::min(width, height) / 32);
-
-        for (int i = 0; i < 12; i++) {
-            const float angle = (static_cast<float>(i) / 12.0f) * 2.0f * kPi;
-            const int x = static_cast<int>(std::round(cx + std::cos(angle) * radius)) - dot_size / 2;
-            const int y = static_cast<int>(std::round(cy + std::sin(angle) * radius)) - dot_size / 2;
-            const int active = (phase + 12 - i) % 12;
-            const float shade = active == 0 ? 1.0f : std::max(0.25f, 0.88f - static_cast<float>(active) * 0.08f);
-            fill_rect(x, y, dot_size, dot_size, height, shade, shade, shade);
+        ui_.begin(width, height);
+        ui_.gradient(0, 0, width, 110.0f * s, {0, 0, 0, 0.0f}, {0, 0, 0, 0.0f});
+        if (!request_.title.empty()) {
+            ui_.text(32.0f * s, 28.0f * s, ui_.ellipsize(request_.title, 26.0f * s, width - 64.0f * s),
+                     26.0f * s, {1, 1, 1, 0.92f});
         }
+        ui_.ring(cx, cy, radius, thickness, 0.0f, 6.2832f, {1, 1, 1, 0.12f});
+        ui_.ring(cx, cy, radius, thickness, static_cast<float>(phase) * 0.45f, 1.7f, {1.0f, 0.0f, 0.0f, 1.0f});
 
         const auto [title, detail] = get_loading_status();
-        const int title_scale = std::max(3, height / 240);
-        const int detail_scale = std::max(2, height / 320);
-        const int title_y = cy + radius + dot_size + height / 30;
-        const int detail_y = title_y + title_scale * 9;
-
+        const float text_y = cy + radius + 26.0f * s;
         if (!title.empty()) {
-            draw_text_line(
-                (width - measure_text_width(title, title_scale)) / 2,
-                title_y,
-                title_scale,
-                height,
-                title,
-                0.92f,
-                0.92f,
-                0.92f);
+            ui_.text(cx, text_y, title, 20.0f * s, {1, 1, 1, 0.9f}, TextAlign::Center);
         }
-
         if (!detail.empty()) {
-            draw_text_line(
-                (width - measure_text_width(detail, detail_scale)) / 2,
-                detail_y,
-                detail_scale,
-                height,
-                detail,
-                0.65f,
-                0.65f,
-                0.65f);
+            ui_.text(cx, text_y + 30.0f * s, detail, 16.0f * s, {1, 1, 1, 0.55f}, TextAlign::Center);
         }
+        ui_.end();
 
         SDL_GL_SwapWindow(window_);
         glFinish();
+    }
+
+    void render_overlay(int width, int height) {
+        refresh_osd_snapshot();
+        ui_.begin(width, height);
+        render_captions(width, height);
+        if (should_draw_osd()) {
+            render_playback_osd(width, height);
+        }
+        if (menu_level_ != 0) {
+            render_menu(width, height);
+        }
+        ui_.end();
+    }
+
+    void render_playback_osd(int width, int height) {
+        const float s = ui_scale(height);
+        const float margin = 32.0f * s;
+
+        // Top: title over a fade, quality pill on the right.
+        ui_.gradient(0, 0, width, 130.0f * s, {0, 0, 0, 0.75f}, {0, 0, 0, 0.0f});
+        const std::string quality = short_quality_label(active_quality_label_);
+        float pill_w = 0.0f;
+        if (!quality.empty()) {
+            const float text_w = ui_.measure(quality, 16.0f * s);
+            pill_w = text_w + 20.0f * s;
+            ui_.rect(width - margin - pill_w, 26.0f * s, pill_w, 28.0f * s, {1, 1, 1, 0.16f}, 6.0f * s);
+            ui_.text(width - margin - pill_w / 2.0f, 30.0f * s, quality, 16.0f * s, {1, 1, 1, 0.95f},
+                     TextAlign::Center);
+        }
+        ui_.text(margin, 24.0f * s, ui_.ellipsize(osd_title_, 24.0f * s, width - margin * 2 - pill_w - 24.0f * s),
+                 24.0f * s, {1, 1, 1, 1});
+
+        // Centre: play symbol while paused.
+        if (last_pause_state_ && menu_level_ == 0) {
+            const float cx = width / 2.0f;
+            const float cy = height / 2.0f;
+            const float r = 40.0f * s;
+            ui_.rect(cx - r, cy - r, r * 2, r * 2, {0, 0, 0, 0.55f}, r);
+            ui_.triangle(cx - 12.0f * s, cy - 18.0f * s, cx - 12.0f * s, cy + 18.0f * s, cx + 20.0f * s, cy,
+                         {1, 1, 1, 1});
+        }
+
+        // Bottom: fade, progress bar, time and button hints.
+        ui_.gradient(0, height - 160.0f * s, width, 160.0f * s, {0, 0, 0, 0.0f}, {0, 0, 0, 0.85f});
+        const float bar_x = margin;
+        const float bar_w = width - margin * 2;
+        const float bar_h = (scrub_active_ ? 6.0f : 4.0f) * s;
+        const float bar_y = height - 80.0f * s;
+        ui_.rect(bar_x, bar_y, bar_w, bar_h, {1, 1, 1, 0.25f}, bar_h / 2);
+
+        const double shown_time = scrub_active_ ? scrub_target_ : last_time_pos_;
+        if (active_is_live_) {
+            ui_.rect(bar_x, bar_y, bar_w, bar_h, {1.0f, 0.0f, 0.0f, 1.0f}, bar_h / 2);
+        } else if (last_duration_ > 1.0) {
+            if (const auto buffered = buffered_ratio()) {
+                ui_.rect(bar_x, bar_y, static_cast<float>(bar_w * *buffered), bar_h, {1, 1, 1, 0.45f}, bar_h / 2);
+            }
+            const float ratio = static_cast<float>(clamp_double(shown_time / last_duration_, 0.0, 1.0));
+            ui_.rect(bar_x, bar_y, bar_w * ratio, bar_h, {1.0f, 0.0f, 0.0f, 1.0f}, bar_h / 2);
+            const float knob = (scrub_active_ ? 9.0f : 6.5f) * s;
+            const float knob_x = bar_x + bar_w * ratio;
+            ui_.rect(knob_x - knob, bar_y + bar_h / 2 - knob, knob * 2, knob * 2, {1.0f, 0.0f, 0.0f, 1.0f}, knob);
+
+            if (scrub_active_) {
+                const std::string bubble = format_playback_time(scrub_target_);
+                const float bw = ui_.measure(bubble, 20.0f * s) + 24.0f * s;
+                const float bx = clamp_float(knob_x - bw / 2, bar_x, bar_x + bar_w - bw);
+                ui_.rect(bx, bar_y - 48.0f * s, bw, 34.0f * s, {0.08f, 0.08f, 0.08f, 0.92f}, 8.0f * s);
+                ui_.text(bx + bw / 2, bar_y - 43.0f * s, bubble, 20.0f * s, {1, 1, 1, 1}, TextAlign::Center);
+            }
+        }
+
+        const float row_y = height - 56.0f * s;
+        if (active_is_live_) {
+            const std::string live = newpipe::tr("player/status/live");
+            const float lw = ui_.measure(live, 16.0f * s) + 18.0f * s;
+            ui_.rect(margin, row_y + 2.0f * s, lw, 24.0f * s, {1.0f, 0.0f, 0.0f, 1.0f}, 4.0f * s);
+            ui_.text(margin + lw / 2, row_y + 4.0f * s, live, 16.0f * s, {1, 1, 1, 1}, TextAlign::Center);
+        } else {
+            const std::string time_text =
+                format_playback_time(shown_time) + "  /  " + format_playback_time(last_duration_);
+            ui_.text(margin, row_y, time_text, 20.0f * s, {1, 1, 1, 0.95f});
+        }
+
+        float hint_x = width - margin;
+        for (const char* key : {"player/hints/menu", "player/hints/pause", "player/hints/back"}) {
+            const std::string label = newpipe::tr(key);
+            hint_x -= draw_hint(hint_x, row_y, label, s, true) + 18.0f * s;
+        }
+
+        // Toast for volume, seek limits and other short messages.
+        if (is_temporary_osd_visible() && !osd_message_.empty()) {
+            const float tw = ui_.measure(osd_message_, 20.0f * s) + 36.0f * s;
+            ui_.rect(width / 2.0f - tw / 2, 84.0f * s, tw, 40.0f * s, {0.08f, 0.08f, 0.08f, 0.88f}, 20.0f * s);
+            ui_.text(width / 2.0f, 92.0f * s, osd_message_, 20.0f * s, {1, 1, 1, 1}, TextAlign::Center);
+        }
+    }
+
+    // "A Pause" style hint drawn right-aligned at right_x; returns its width.
+    float draw_hint(float right_x, float y, const std::string& label, float s, bool right_aligned) {
+        (void) right_aligned;
+        const size_t space = label.find(' ');
+        const std::string button = space == std::string::npos ? label : label.substr(0, space);
+        const std::string text = space == std::string::npos ? std::string() : label.substr(space + 1);
+        const float text_w = ui_.measure(text, 17.0f * s);
+        const float button_w = std::max(26.0f * s, ui_.measure(button, 15.0f * s) + 12.0f * s);
+        const float total = button_w + 8.0f * s + text_w;
+        const float x = right_x - total;
+        ui_.rect(x, y + 1.0f * s, button_w, 26.0f * s, {1, 1, 1, 0.9f}, 13.0f * s);
+        ui_.text(x + button_w / 2, y + 5.0f * s, button, 15.0f * s, {0, 0, 0, 1}, TextAlign::Center);
+        ui_.text(x + button_w + 8.0f * s, y + 3.0f * s, text, 17.0f * s, {1, 1, 1, 0.8f});
+        return total;
+    }
+
+    void render_captions(int width, int height) {
+        if (caption_index_ < 0 || caption_cues_.empty() || !mpv_) {
+            return;
+        }
+        double now = last_time_pos_;
+        double value = 0.0;
+        if (mpv_get_property(mpv_, "time-pos", MPV_FORMAT_DOUBLE, &value) >= 0 && std::isfinite(value)) {
+            now = value;
+        }
+        std::string text;
+        for (const auto& cue : caption_cues_) {
+            if (now >= cue.start && now < cue.end) {
+                if (!text.empty()) {
+                    text += "\n";
+                }
+                text += cue.text;
+            }
+        }
+        if (text.empty()) {
+            return;
+        }
+
+        const float s = ui_scale(height);
+        const float size = 28.0f * s;
+        const float line_h = size * 1.3f;
+        std::vector<std::string> lines = ui_.wrap(text, size, width * 0.8f);
+        // Auto-generated captions repeat the previous line; keep the last two.
+        if (lines.size() > 2) {
+            lines.erase(lines.begin(), lines.end() - 2);
+        }
+        const float bottom = should_draw_osd() ? height - 120.0f * s : height - 48.0f * s;
+        float y = bottom - line_h * lines.size();
+        for (const auto& line : lines) {
+            const float w = ui_.measure(line, size) + 20.0f * s;
+            ui_.rect(width / 2.0f - w / 2, y, w, line_h, {0.03f, 0.03f, 0.03f, 0.75f}, 4.0f * s);
+            ui_.text(width / 2.0f, y + (line_h - size) / 2, line, size, {1, 1, 1, 1}, TextAlign::Center);
+            y += line_h;
+        }
+    }
+
+    // ---- settings menu ----------------------------------------------------
+
+    enum MenuLevel { kMenuClosed = 0, kMenuRoot, kMenuQuality, kMenuCaptions, kMenuSpeed };
+
+    static constexpr double kSpeeds[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0};
+
+    int current_quality_mode() const {
+        return request_.quality_override >= 0
+            ? request_.quality_override
+            : static_cast<int>(SettingsStore::instance().settings().playback_quality);
+    }
+
+    std::string quality_option_label(int mode) const {
+        switch (mode) {
+            case 1:
+                return "1080p";
+            case 2:
+                return "720p";
+            case 3:
+                return "360p";
+            default:
+                return newpipe::tr("player/menu/quality_auto");
+        }
+    }
+
+    std::string speed_label(double speed) const {
+        if (std::fabs(speed - 1.0) < 0.01) {
+            return newpipe::tr("player/menu/speed_normal");
+        }
+        char buffer[16];
+        std::snprintf(buffer, sizeof(buffer), "%gx", speed);
+        return buffer;
+    }
+
+    std::vector<std::pair<std::string, std::string>> menu_rows() const {
+        std::vector<std::pair<std::string, std::string>> rows;
+        switch (menu_level_) {
+            case kMenuRoot: {
+                std::string quality = quality_option_label(current_quality_mode());
+                const std::string active = short_quality_label(active_quality_label_);
+                if (!active.empty()) {
+                    quality += " \xE2\x80\xA2 " + active;
+                }
+                rows.push_back({newpipe::tr("player/menu/quality"), quality});
+                rows.push_back({newpipe::tr("player/menu/captions"),
+                                caption_index_ >= 0 && caption_index_ < static_cast<int>(captions_.size())
+                                    ? captions_[caption_index_].name
+                                    : newpipe::tr("player/menu/captions_off")});
+                rows.push_back({newpipe::tr("player/menu/speed"), speed_label(playback_speed_)});
+                break;
+            }
+            case kMenuQuality:
+                for (int mode = 0; mode < 4; ++mode) {
+                    rows.push_back({quality_option_label(mode), mode == current_quality_mode() ? "\xE2\x97\x8F" : ""});
+                }
+                break;
+            case kMenuCaptions:
+                rows.push_back({newpipe::tr("player/menu/captions_off"), caption_index_ < 0 ? "\xE2\x97\x8F" : ""});
+                for (size_t i = 0; i < captions_.size(); ++i) {
+                    rows.push_back({captions_[i].name, static_cast<int>(i) == caption_index_ ? "\xE2\x97\x8F" : ""});
+                }
+                break;
+            case kMenuSpeed:
+                for (double speed : kSpeeds) {
+                    rows.push_back({speed_label(speed), std::fabs(speed - playback_speed_) < 0.01 ? "\xE2\x97\x8F" : ""});
+                }
+                break;
+            default:
+                break;
+        }
+        return rows;
+    }
+
+    void render_menu(int width, int height) {
+        const float s = ui_scale(height);
+        const auto rows = menu_rows();
+        const float row_h = 50.0f * s;
+        const float header_h = menu_level_ == kMenuRoot ? 14.0f * s : 54.0f * s;
+        const size_t visible = std::min<size_t>(rows.size(), 8);
+        const float panel_w = 440.0f * s;
+        const float panel_h = header_h + row_h * visible + 14.0f * s;
+        const float x = width - 32.0f * s - panel_w;
+        const float y = height - 100.0f * s - panel_h;
+        ui_.rect(x, y, panel_w, panel_h, {0.13f, 0.13f, 0.13f, 0.97f}, 14.0f * s);
+
+        if (menu_level_ != kMenuRoot) {
+            const char* key = menu_level_ == kMenuQuality ? "player/menu/quality"
+                : menu_level_ == kMenuCaptions          ? "player/menu/captions"
+                                                        : "player/menu/speed";
+            ui_.text(x + 22.0f * s, y + 16.0f * s, "\xE2\x80\xB9  " + newpipe::tr(key), 20.0f * s, {1, 1, 1, 1});
+            ui_.rect(x, y + header_h - 2.0f * s, panel_w, 1.0f * s, {1, 1, 1, 0.12f});
+        }
+
+        // Keep the selection in view when the list is longer than the panel.
+        size_t first = 0;
+        if (static_cast<size_t>(menu_index_) >= visible) {
+            first = static_cast<size_t>(menu_index_) - visible + 1;
+        }
+        float row_y = y + header_h + 6.0f * s;
+        for (size_t i = first; i < rows.size() && i < first + visible; ++i) {
+            if (static_cast<int>(i) == menu_index_) {
+                ui_.rect(x + 8.0f * s, row_y, panel_w - 16.0f * s, row_h, {1, 1, 1, 0.12f}, 8.0f * s);
+            }
+            const bool marker = rows[i].second == "\xE2\x97\x8F";
+            float label_x = x + 22.0f * s;
+            if (menu_level_ != kMenuRoot) {
+                if (marker) {
+                    const float r = 5.0f * s;
+                    ui_.rect(label_x, row_y + row_h / 2 - r, r * 2, r * 2, {1.0f, 0.0f, 0.0f, 1.0f}, r);
+                }
+                label_x += 24.0f * s;
+            }
+            const float value_w = (menu_level_ == kMenuRoot) ? 190.0f * s : 0.0f;
+            ui_.text(label_x, row_y + 13.0f * s,
+                     ui_.ellipsize(rows[i].first, 19.0f * s, panel_w - (label_x - x) - value_w - 30.0f * s),
+                     19.0f * s, {1, 1, 1, 1});
+            if (menu_level_ == kMenuRoot) {
+                ui_.text(x + panel_w - 22.0f * s, row_y + 14.0f * s,
+                         ui_.ellipsize(rows[i].second + "  \xE2\x80\xBA", 17.0f * s, value_w), 17.0f * s,
+                         {1, 1, 1, 0.6f}, TextAlign::Right);
+            }
+            row_y += row_h;
+        }
+    }
+
+    void open_menu() {
+        menu_level_ = kMenuRoot;
+        menu_index_ = 0;
+        scrub_active_ = false;
+        scrub_dir_ = 0;
+    }
+
+    void menu_move(int delta) {
+        const int count = static_cast<int>(menu_rows().size());
+        if (count > 0) {
+            menu_index_ = (menu_index_ + delta + count) % count;
+        }
+    }
+
+    void menu_back() {
+        if (menu_level_ == kMenuRoot) {
+            menu_level_ = kMenuClosed;
+            return;
+        }
+        menu_index_ = menu_level_ - kMenuQuality;
+        menu_level_ = kMenuRoot;
+    }
+
+    void menu_confirm(bool& running) {
+        switch (menu_level_) {
+            case kMenuRoot:
+                menu_level_ = kMenuQuality + menu_index_;
+                menu_index_ = menu_level_ == kMenuQuality ? current_quality_mode()
+                    : menu_level_ == kMenuCaptions        ? caption_index_ + 1
+                                                          : speed_index();
+                break;
+            case kMenuQuality:
+                if (menu_index_ != current_quality_mode()) {
+                    request_quality_change(menu_index_, running);
+                }
+                menu_level_ = kMenuClosed;
+                break;
+            case kMenuCaptions:
+                select_caption(menu_index_ - 1);
+                menu_level_ = kMenuClosed;
+                break;
+            case kMenuSpeed:
+                set_speed(kSpeeds[menu_index_]);
+                menu_level_ = kMenuClosed;
+                break;
+            default:
+                break;
+        }
+    }
+
+    int speed_index() const {
+        for (size_t i = 0; i < sizeof(kSpeeds) / sizeof(kSpeeds[0]); ++i) {
+            if (std::fabs(kSpeeds[i] - playback_speed_) < 0.01) {
+                return static_cast<int>(i);
+            }
+        }
+        return 2;
+    }
+
+    void set_speed(double speed) {
+        if (!mpv_) {
+            return;
+        }
+        mpv_set_property(mpv_, "speed", MPV_FORMAT_DOUBLE, &speed);
+        playback_speed_ = speed;
+        show_osd_message(newpipe::tr("player/menu/speed") + ": " + speed_label(speed), 1800);
+    }
+
+    void select_caption(int index) {
+        if (index < 0 || index >= static_cast<int>(captions_.size())) {
+            caption_index_ = -1;
+            caption_cues_.clear();
+            show_osd_message(newpipe::tr("player/menu/captions_off_toast"), 1800);
+            return;
+        }
+        HttpsHttpClient client;
+        const auto body = client.get(captions_[index].url);
+        if (!body.has_value() || body->empty()) {
+            show_osd_message(newpipe::tr("player/menu/captions_failed"), 2500);
+            return;
+        }
+        caption_cues_ = parse_vtt(*body);
+        caption_index_ = index;
+        logf("player: captions lang=%s cues=%zu", captions_[index].language.c_str(), caption_cues_.size());
+        show_osd_message(captions_[index].name, 1800);
+    }
+
+    // Restarts the same video at the current position with another quality.
+    void request_quality_change(int mode, bool& running) {
+        if (!first_frame_rendered_ || !YouTubeResolver::is_youtube_url(request_.url)) {
+            show_osd_message(newpipe::tr("player/menu/quality_unavailable"), 2200);
+            return;
+        }
+        PlaybackRequest next = request_;
+        next.quality_override = mode;
+        next.start_seconds = active_is_live_ ? 0.0 : last_time_pos_;
+        logf("player: quality change %d -> %d at %.1f", current_quality_mode(), mode, next.start_seconds);
+        restart_request_ = next;
+        running = false;
+    }
+
+    // ---- input --------------------------------------------------------------
+
+    enum class Input { Confirm, Back, Menu, Up, Down, Left, Right, ReleaseHorizontal, SeekBack, SeekForward };
+
+    void handle_input(Input input, bool& running, bool& paused, bool& force_redraw) {
+        force_redraw = true;
+        if (menu_level_ != kMenuClosed) {
+            switch (input) {
+                case Input::Up:
+                    menu_move(-1);
+                    break;
+                case Input::Down:
+                    menu_move(1);
+                    break;
+                case Input::Confirm:
+                    menu_confirm(running);
+                    break;
+                case Input::Right:
+                    if (menu_level_ == kMenuRoot) {
+                        menu_confirm(running);
+                    }
+                    break;
+                case Input::Back:
+                case Input::Left:
+                    menu_back();
+                    break;
+                case Input::Menu:
+                    menu_level_ = kMenuClosed;
+                    break;
+                default:
+                    break;
+            }
+            return;
+        }
+
+        switch (input) {
+            case Input::Back:
+                running = false;
+                break;
+            case Input::Confirm:
+                toggle_pause(paused, force_redraw);
+                break;
+            case Input::Menu:
+                if (first_frame_rendered_) {
+                    open_menu();
+                }
+                break;
+            case Input::Up:
+                change_volume(5, force_redraw);
+                break;
+            case Input::Down:
+                change_volume(-5, force_redraw);
+                break;
+            case Input::Left:
+                start_scrub(-1);
+                break;
+            case Input::Right:
+                start_scrub(1);
+                break;
+            case Input::ReleaseHorizontal:
+                release_scrub();
+                break;
+            case Input::SeekBack:
+                seek_relative(-kLongSeekSeconds, force_redraw);
+                break;
+            case Input::SeekForward:
+                seek_relative(kLongSeekSeconds, force_redraw);
+                break;
+        }
+    }
+
+    bool accept_input(bool is_back) {
+        if (std::chrono::steady_clock::now() < player_input_ready_at_) {
+            return false;
+        }
+        // The press that started playback can arrive here; ignore it while loading.
+        if (!first_frame_rendered_ && is_back) {
+            log_line("player: ignored back during loading");
+            return false;
+        }
+        return true;
+    }
+
+    void handle_controller_button(Uint8 button, bool& running, bool& paused, bool& force_redraw) {
+        logf("player: controller button=%u", static_cast<unsigned int>(button));
+        std::optional<Input> input;
+        switch (button) {
+            case SDL_CONTROLLER_BUTTON_A:
+                input = Input::Back;
+                break;
+            case SDL_CONTROLLER_BUTTON_B:
+                input = Input::Confirm;
+                break;
+            case SDL_CONTROLLER_BUTTON_X:
+            case SDL_CONTROLLER_BUTTON_Y:
+            case SDL_CONTROLLER_BUTTON_START:
+            case SDL_CONTROLLER_BUTTON_BACK:
+                input = Input::Menu;
+                break;
+            case SDL_CONTROLLER_BUTTON_DPAD_UP:
+                input = Input::Up;
+                break;
+            case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                input = Input::Down;
+                break;
+            case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+                input = Input::Left;
+                break;
+            case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+                input = Input::Right;
+                break;
+            case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+                input = Input::SeekBack;
+                break;
+            case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+                input = Input::SeekForward;
+                break;
+            default:
+                break;
+        }
+        if (input && accept_input(*input == Input::Back)) {
+            handle_input(*input, running, paused, force_redraw);
+        }
+    }
+
+    void handle_controller_button_up(Uint8 button, bool& running, bool& paused, bool& force_redraw) {
+        if (button == SDL_CONTROLLER_BUTTON_DPAD_LEFT || button == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
+            handle_input(Input::ReleaseHorizontal, running, paused, force_redraw);
+        }
+    }
+
+    void handle_joy_button(Uint8 button, bool& running, bool& paused, bool& force_redraw) {
+        logf("player: joystick button=%u", static_cast<unsigned int>(button));
+        std::optional<Input> input;
+        // HidNpadButton bit order: 0 A, 1 B, 2 X, 3 Y, 6 L, 7 R, 10 Plus, 11 Minus,
+        // 12 Left, 13 Up, 14 Right, 15 Down.
+        switch (button) {
+            case 0:
+                input = Input::Back;
+                break;
+            case 1:
+                input = Input::Confirm;
+                break;
+            case 2:
+            case 3:
+            case 10:
+            case 11:
+                input = Input::Menu;
+                break;
+            case 13:
+                input = Input::Up;
+                break;
+            case 15:
+                input = Input::Down;
+                break;
+            case 12:
+                input = Input::Left;
+                break;
+            case 14:
+                input = Input::Right;
+                break;
+            case 6:
+                input = Input::SeekBack;
+                break;
+            case 7:
+                input = Input::SeekForward;
+                break;
+            default:
+                break;
+        }
+        if (input && accept_input(*input == Input::Back)) {
+            handle_input(*input, running, paused, force_redraw);
+        }
+    }
+
+    void handle_joy_button_up(Uint8 button, bool& running, bool& paused, bool& force_redraw) {
+        if (button == 12 || button == 14) {
+            handle_input(Input::ReleaseHorizontal, running, paused, force_redraw);
+        }
+    }
+
+    void handle_hat(Uint8 hat_value, bool& running, bool& paused, bool& force_redraw) {
+        if (!accept_input(false)) {
+            return;
+        }
+        if (hat_value & SDL_HAT_UP) {
+            handle_input(Input::Up, running, paused, force_redraw);
+        } else if (hat_value & SDL_HAT_DOWN) {
+            handle_input(Input::Down, running, paused, force_redraw);
+        } else if (hat_value & SDL_HAT_LEFT) {
+            handle_input(Input::Left, running, paused, force_redraw);
+        } else if (hat_value & SDL_HAT_RIGHT) {
+            handle_input(Input::Right, running, paused, force_redraw);
+        } else if (scrub_dir_ != 0) {
+            handle_input(Input::ReleaseHorizontal, running, paused, force_redraw);
+        }
+    }
+
+    // ---- scrubbing: hold left/right to move a marker, release to seek ---------
+
+    void start_scrub(int direction) {
+        if (!mpv_ || !first_frame_rendered_.load()) {
+            return;
+        }
+        if (active_is_live_) {
+            show_osd_message(newpipe::tr("player/osd/seek_live"), 2000);
+            return;
+        }
+        refresh_osd_snapshot(true);
+        if (last_duration_ <= 1.0 || !is_media_seekable()) {
+            show_osd_message(newpipe::tr("player/osd/seek_unavailable"), 2000);
+            return;
+        }
+        if (!scrub_active_) {
+            scrub_active_ = true;
+            scrub_target_ = last_time_pos_;
+            scrub_steps_ = 0;
+        }
+        scrub_dir_ = direction;
+        scrub_step();
+        scrub_next_step_at_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(380);
+    }
+
+    void scrub_step() {
+        ++scrub_steps_;
+        // 5 s steps first, then faster the longer the button is held.
+        const double base = std::max(5.0, last_duration_ / 240.0);
+        const double step = scrub_steps_ < 4 ? base : scrub_steps_ < 12 ? base * 2.0 : base * 6.0;
+        double limit = std::max(0.0, last_duration_ - 1.0);
+        if (const auto buffered = buffered_seek_limit_seconds()) {
+            limit = std::min(limit, std::max(0.0, *buffered - 2.0));
+        }
+        scrub_target_ = clamp_double(scrub_target_ + scrub_dir_ * step, 0.0, limit);
+    }
+
+    void release_scrub() {
+        if (!scrub_active_) {
+            return;
+        }
+        scrub_dir_ = 0;
+        scrub_commit_at_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(550);
+    }
+
+    void update_scrub(bool& force_redraw) {
+        if (!scrub_active_) {
+            return;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (scrub_dir_ != 0 && now >= scrub_next_step_at_) {
+            scrub_step();
+            scrub_next_step_at_ = now + std::chrono::milliseconds(110);
+            force_redraw = true;
+        } else if (scrub_dir_ == 0 && now >= scrub_commit_at_) {
+            scrub_active_ = false;
+            seek_relative(scrub_target_ - last_time_pos_, force_redraw);
+        }
+        if (scrub_active_) {
+            osd_visible_until_ = now + std::chrono::milliseconds(2500);
+            osd_message_.clear();
+        }
     }
 
     bool drain_mpv_events() {
@@ -2741,7 +3228,7 @@ private:
         };
 
         mpv_render_context_render(render_context_, params);
-        render_playback_osd(width, height);
+        render_overlay(width, height);
         SDL_GL_SwapWindow(window_);
         mpv_render_context_report_swap(render_context_);
     }
@@ -2752,6 +3239,7 @@ private:
         destroy_mpv();
 
         if (gl_context_) {
+            ui_.shutdown();
             SDL_GL_MakeCurrent(window_, nullptr);
             SDL_GL_DeleteContext(gl_context_);
             gl_context_ = nullptr;
@@ -2831,6 +3319,19 @@ private:
     // Read from the mpv render/event thread and the SDL input path, so keep it atomic.
     std::atomic<bool> first_frame_rendered_{false};
     bool osd_pinned_ = false;
+    PlayerUi ui_;
+    int menu_level_ = 0;
+    int menu_index_ = 0;
+    double playback_speed_ = 1.0;
+    std::vector<CaptionTrack> captions_;
+    std::vector<CaptionCue> caption_cues_;
+    int caption_index_ = -1;
+    bool scrub_active_ = false;
+    int scrub_dir_ = 0;
+    int scrub_steps_ = 0;
+    double scrub_target_ = 0.0;
+    std::chrono::steady_clock::time_point scrub_next_step_at_{};
+    std::chrono::steady_clock::time_point scrub_commit_at_{};
     std::thread stream_download_thread_;
     std::string stream_cache_path_;
     std::string audio_cache_path_;
@@ -2865,7 +3366,7 @@ private:
     // so hold the OSD on the requested position instead of letting it snap back.
     std::chrono::steady_clock::time_point osd_time_hold_until_{};
     std::chrono::steady_clock::time_point player_input_ready_at_{};
-    std::string osd_title_ = clamp_text(uppercase_ascii(request_.title), 52);
+    std::string osd_title_ = request_.title;
     std::string osd_message_;
     double last_time_pos_ = 0.0;
     double last_duration_ = 0.0;

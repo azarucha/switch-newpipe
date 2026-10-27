@@ -41,10 +41,10 @@ struct FeedPreset {
 };
 
 constexpr std::array<FeedPreset, 4> kFeedPresets = {{
-    {"recommended", "추천", "best videos today", false},
-    {"live", "라이브", "live now", true},
-    {"music", "음악", "music video", false},
-    {"gaming", "게임", "gaming trailer", false},
+    {"recommended", "Recommended", "best videos today", false},
+    {"live", "Live", "live now", true},
+    {"music", "Music", "music video", false},
+    {"gaming", "Gaming", "gaming trailer", false},
 }};
 
 std::string get_string(const json& node, const char* key) {
@@ -762,6 +762,65 @@ std::optional<StreamItem> parse_tile_stream_item(const json& tile, bool allow_sh
     return item;
 }
 
+std::optional<StreamItem> parse_tile_playlist_item(const json& tile) {
+    if (get_string(tile, "contentType") != "TILE_CONTENT_TYPE_PLAYLIST") {
+        return std::nullopt;
+    }
+    StreamItem item;
+    item.id = get_string(tile, "contentId");
+    if (item.id.empty()) {
+        return std::nullopt;
+    }
+    item.is_playlist = true;
+    item.url = "https://www.youtube.com/playlist?list=" + item.id;
+
+    const json header = tile.value("header", json::object()).value("tileHeaderRenderer", json::object());
+    item.thumbnail_url = get_thumbnail_url_from_node(header.value("thumbnail", json::object()));
+    for (const auto& overlay : header.value("thumbnailOverlays", json::array())) {
+        const json status = overlay.value("thumbnailOverlayTimeStatusRenderer", json::object());
+        if (!status.empty()) {
+            item.view_count_text = get_text(status.value("text", json::object()));
+        }
+    }
+
+    const json metadata =
+        tile.value("metadata", json::object()).value("tileMetadataRenderer", json::object());
+    item.title = get_text(metadata.value("title", json::object()));
+    const json lines = metadata.value("lines", json::array());
+    for (size_t i = 0; i < lines.size(); ++i) {
+        std::string text;
+        for (const auto& entry : lines[i].value("lineRenderer", json::object()).value("items", json::array())) {
+            const std::string part = get_text(entry.value("lineItemRenderer", json::object()).value("text", json::object()));
+            if (!part.empty() && part != "\u2022") {
+                text += text.empty() ? part : " " + part;
+            }
+        }
+        if (i == 0) {
+            item.channel_name = text;
+        } else if (i == 1) {
+            item.published_text = text;
+        }
+    }
+    return item.title.empty() ? std::nullopt : std::optional<StreamItem>(item);
+}
+
+void collect_tile_playlists(const json& node, std::vector<StreamItem>& out_items) {
+    if (node.is_object()) {
+        if (node.contains("tileRenderer")) {
+            if (auto item = parse_tile_playlist_item(node.at("tileRenderer"))) {
+                out_items.push_back(*item);
+            }
+        }
+        for (const auto& entry : node.items()) {
+            collect_tile_playlists(entry.value(), out_items);
+        }
+    } else if (node.is_array()) {
+        for (const auto& child : node) {
+            collect_tile_playlists(child, out_items);
+        }
+    }
+}
+
 void collect_stream_items(
     const json& node,
     bool allow_short_videos,
@@ -878,6 +937,12 @@ void collect_playlist_items(
 std::string find_next_page_token(const json& node, bool inside_continuation_item = false) {
     std::string token;
     if (node.is_object()) {
+        if (node.contains("nextContinuationData")) {
+            const std::string next = get_string(node.at("nextContinuationData"), "continuation");
+            if (!next.empty()) {
+                token = next;
+            }
+        }
         if (inside_continuation_item && node.contains("continuationCommand")) {
             const json& command = node.at("continuationCommand");
             if (command.is_object() && command.contains("token") && command.at("token").is_string()) {
@@ -967,7 +1032,7 @@ std::optional<json> fetch_watch_page_initial_data(HttpClient* client, const std:
         {
             {"User-Agent", kWebUserAgent},
             {"Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8"},
-            {"Cookie", "PREF=hl=ko&gl=KR"},
+            {"Cookie", "PREF=hl=" + content_locale().hl + "&gl=" + content_locale().gl},
         });
     if (!response.has_value() || response->empty()) {
         return std::nullopt;
@@ -1080,8 +1145,8 @@ std::optional<CommentPage> fetch_comments_page(
          {{"client",
            {{"clientName", "WEB"},
             {"clientVersion", kWebClientVersion},
-            {"hl", "ko"},
-            {"gl", "KR"},
+            {"hl", content_locale().hl},
+            {"gl", content_locale().gl},
             {"platform", "DESKTOP"}}}}},
     };
 
@@ -1160,7 +1225,7 @@ std::optional<CommentPage> fetch_comments_page(
     }
 
     if (page.title.empty()) {
-        page.title = "댓글";
+        page.title = "Comments";
     }
     page.continuation = find_next_page_token(endpoints);
     return page;
@@ -1330,7 +1395,7 @@ std::optional<HomeFeed> YouTubeCatalogService::get_home_feed(const std::string& 
         }
     }
 
-    error_message_ = "지원하지 않는 홈 카테고리";
+    error_message_ = "Unsupported home category";
     return std::nullopt;
 }
 
@@ -1348,11 +1413,11 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_authenticated_browse_feed(
 
     std::string auth_error;
     if (!this->auth_store_->load(&auth_error)) {
-        this->error_message_ = auth_error.empty() ? "로그인 세션 로드 실패" : auth_error;
+        this->error_message_ = auth_error.empty() ? "Could not load the sign-in" : auth_error;
         return std::nullopt;
     }
     if (!this->auth_store_->has_session()) {
-        this->error_message_ = "구독 피드를 보려면 로그인 세션이 필요합니다";
+        this->error_message_ = "Sign in to see your subscriptions";
         return std::nullopt;
     }
 
@@ -1366,9 +1431,8 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_authenticated_browse_feed(
          {{"client",
            {{"clientName", "WEB"},
             {"clientVersion", kWebClientVersion},
-            {"hl", "ko"},
-            {"gl", "KR"},
-            {"utcOffsetMinutes", 540},
+            {"hl", content_locale().hl},
+            {"gl", content_locale().gl},
             {"platform", "DESKTOP"},
             {"screenWidthPoints", 1280},
             {"screenHeightPoints", 720},
@@ -1389,13 +1453,13 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_authenticated_browse_feed(
 
     const auto response = this->client_->post(kBrowseApiUrl, payload.dump(), headers);
     if (!response.has_value() || response->empty()) {
-        this->error_message_ = "인증된 구독 피드 요청 실패";
+        this->error_message_ = "Could not load your feed";
         return std::nullopt;
     }
 
     const json root = json::parse(*response, nullptr, false);
     if (root.is_discarded()) {
-        this->error_message_ = "구독 피드 응답 파싱 실패";
+        this->error_message_ = "Could not read your feed";
         return std::nullopt;
     }
 
@@ -1404,7 +1468,7 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_authenticated_browse_feed(
     std::unordered_set<std::string> seen_ids;
     collect_stream_items(root, allow_short_videos, limit, seen_ids, feed.items);
     if (feed.items.empty()) {
-        this->error_message_ = "구독 피드에서 영상 항목을 찾지 못했습니다";
+        this->error_message_ = "No videos found in your feed";
         return std::nullopt;
     }
 
@@ -1415,28 +1479,21 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_authenticated_browse_feed(
     return feed;
 }
 
-std::optional<HomeFeed> YouTubeCatalogService::fetch_tv_browse_feed(
-    const std::string& browse_id,
-    const std::string& title,
-    size_t limit,
-    bool allow_short_videos) const {
+std::optional<json> YouTubeCatalogService::fetch_tv_browse(const json& request) const {
     std::string auth_error;
     const auto access_token = this->auth_store_->oauth_access_token(*this->client_, &auth_error);
     if (!access_token.has_value()) {
-        this->error_message_ = auth_error.empty() ? "로그인 토큰을 가져오지 못했습니다" : auth_error;
+        this->error_message_ = auth_error.empty() ? "Could not get a sign-in token" : auth_error;
         return std::nullopt;
     }
 
-    const json payload = {
-        {"browseId", browse_id},
-        {"context",
-         {{"client",
-           {{"clientName", "TVHTML5"},
-            {"clientVersion", kTvClientVersion},
-            {"hl", "ko"},
-            {"gl", "KR"},
-            {"utcOffsetMinutes", 540}}}}},
-    };
+    json payload = request;
+    payload["context"] = {
+        {"client",
+         {{"clientName", "TVHTML5"},
+          {"clientVersion", kTvClientVersion},
+          {"hl", content_locale().hl},
+          {"gl", content_locale().gl}}}};
     const std::vector<HttpHeader> headers = {
         {"Authorization", "Bearer " + *access_token},
         {"Content-Type", "application/json"},
@@ -1444,25 +1501,83 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_tv_browse_feed(
         {"X-Youtube-Client-Name", "7"},
         {"X-Youtube-Client-Version", kTvClientVersion},
     };
-
     const auto response = this->client_->post(kBrowseApiUrl, payload.dump(), headers);
     if (!response.has_value() || response->empty()) {
-        this->error_message_ = "인증된 구독 피드 요청 실패";
+        this->error_message_ = "Could not load your feed";
         return std::nullopt;
     }
-
-    const json root = json::parse(*response, nullptr, false);
+    json root = json::parse(*response, nullptr, false);
     if (root.is_discarded()) {
-        this->error_message_ = "구독 피드 응답 파싱 실패";
+        this->error_message_ = "Could not read your feed";
         return std::nullopt;
     }
+    return root;
+}
+
+std::optional<HomeFeed> YouTubeCatalogService::get_library_playlists() const {
+    if (!this->auth_store_->has_oauth_session()) {
+        this->error_message_ = "Sign in with a code (Subscriptions tab, RB) to see your playlists";
+        return std::nullopt;
+    }
+    const auto root = this->fetch_tv_browse({{"browseId", "FEplaylist_aggregation"}});
+    if (!root.has_value()) {
+        return std::nullopt;
+    }
+    HomeFeed feed;
+    feed.kiosk = {"playlists", "Playlists"};
+    collect_tile_playlists(*root, feed.items);
+    if (feed.items.empty()) {
+        this->error_message_ = "No playlists found";
+        return std::nullopt;
+    }
+    this->error_message_.clear();
+    logf("youtube: library playlists=%zu", feed.items.size());
+    return feed;
+}
+
+std::optional<HomeFeed> YouTubeCatalogService::get_playlist_by_id(const std::string& playlist_id) const {
+    // Private lists (Watch later, Liked videos) only open with the TV sign-in.
+    if (!this->auth_store_->has_oauth_session()) {
+        return this->fetch_playlist_feed_from_browse(playlist_id, 200);
+    }
+    const auto root = this->fetch_tv_browse({{"browseId", "VL" + playlist_id}});
+    if (!root.has_value()) {
+        return std::nullopt;
+    }
+    HomeFeed feed;
+    feed.kiosk = {playlist_id, "Playlist"};
+    std::unordered_set<std::string> seen_ids;
+    const AppSettings settings = SettingsStore::instance().settings();
+    collect_stream_items(*root, !settings.hide_short_videos, 500, seen_ids, feed.items);
+    feed.continuation = find_next_page_token(*root);
+    if (feed.items.empty()) {
+        this->error_message_ = "No videos found in this playlist";
+        return std::nullopt;
+    }
+    this->cache_stream_details(feed.items);
+    this->error_message_.clear();
+    logf("youtube: tv playlist id=%s items=%zu more=%d",
+         playlist_id.c_str(), feed.items.size(), feed.continuation.empty() ? 0 : 1);
+    return feed;
+}
+
+std::optional<HomeFeed> YouTubeCatalogService::fetch_tv_browse_feed(
+    const std::string& browse_id,
+    const std::string& title,
+    size_t limit,
+    bool allow_short_videos) const {
+    const auto root_opt = this->fetch_tv_browse({{"browseId", browse_id}});
+    if (!root_opt.has_value()) {
+        return std::nullopt;
+    }
+    const json& root = *root_opt;
 
     HomeFeed feed;
     feed.kiosk = {browse_id, title};
     std::unordered_set<std::string> seen_ids;
     collect_stream_items(root, allow_short_videos, limit, seen_ids, feed.items);
     if (feed.items.empty()) {
-        this->error_message_ = "구독 피드에서 영상 항목을 찾지 못했습니다";
+        this->error_message_ = "No videos found in your feed";
         return std::nullopt;
     }
 
@@ -1477,7 +1592,7 @@ std::optional<StreamDetail> YouTubeCatalogService::fetch_stream_detail_from_play
     const std::string& url) const {
     const auto video_id = extract_video_id_from_url(url);
     if (!video_id.has_value()) {
-        this->error_message_ = "영상 ID를 추출할 수 없습니다";
+        this->error_message_ = "Could not read the video ID";
         return std::nullopt;
     }
 
@@ -1490,8 +1605,8 @@ std::optional<StreamDetail> YouTubeCatalogService::fetch_stream_detail_from_play
            {{"clientName", "ANDROID"},
             {"clientVersion", kAndroidClientVersion},
             {"androidSdkVersion", 30},
-            {"hl", "ko"},
-            {"gl", "KR"}}}}},
+            {"hl", content_locale().hl},
+            {"gl", content_locale().gl}}}}},
     };
 
     const auto response = this->client_->post(
@@ -1506,20 +1621,20 @@ std::optional<StreamDetail> YouTubeCatalogService::fetch_stream_detail_from_play
         });
 
     if (!response.has_value() || response->empty()) {
-        this->error_message_ = "영상 상세 요청 실패";
+        this->error_message_ = "Could not load the video details";
         return std::nullopt;
     }
 
     const json root = json::parse(*response, nullptr, false);
     if (root.is_discarded()) {
-        this->error_message_ = "영상 상세 응답 파싱 실패";
+        this->error_message_ = "Could not read the video details";
         return std::nullopt;
     }
 
     const json playability = root.value("playabilityStatus", json::object());
     const std::string playability_status = get_string(playability, "status");
     if (!playability_status.empty() && playability_status != "OK") {
-        this->error_message_ = "영상 상세 불러오기 실패: " + playability_status;
+        this->error_message_ = "Could not load the video: " + playability_status;
         return std::nullopt;
     }
 
@@ -1620,7 +1735,7 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_channel_feed_from_rss(
         }
     }
     if (channel_id.empty()) {
-        this->error_message_ = "채널 ID를 찾지 못했습니다";
+        this->error_message_ = "Channel not found";
         return std::nullopt;
     }
 
@@ -1632,12 +1747,12 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_channel_feed_from_rss(
 
     const auto response = this->client_->get(kChannelFeedUrlPrefix + channel_id);
     if (!response.has_value() || response->empty()) {
-        this->error_message_ = "채널 피드 요청 실패";
+        this->error_message_ = "Could not load the channel";
         return std::nullopt;
     }
 
     HomeFeed feed;
-    feed.kiosk = {channel_id, item.channel_name.empty() ? "채널 업로드" : item.channel_name + " 업로드"};
+    feed.kiosk = {channel_id, item.channel_name.empty() ? "Channel uploads" : item.channel_name};
 
     size_t search_from = 0;
     while (feed.items.size() < limit) {
@@ -1679,7 +1794,7 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_channel_feed_from_rss(
     }
 
     if (feed.items.empty()) {
-        this->error_message_ = "채널 피드에서 영상을 찾지 못했습니다";
+        this->error_message_ = "No videos found on this channel";
         return std::nullopt;
     }
 
@@ -1694,7 +1809,7 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_playlist_feed_from_browse(
     const std::string& playlist_id,
     size_t limit) const {
     if (playlist_id.empty()) {
-        this->error_message_ = "재생목록 ID를 찾지 못했습니다";
+        this->error_message_ = "Playlist not found";
         return std::nullopt;
     }
 
@@ -1710,8 +1825,8 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_playlist_feed_from_browse(
          {{"client",
            {{"clientName", "WEB"},
             {"clientVersion", kWebClientVersion},
-            {"hl", "ko"},
-            {"gl", "KR"},
+            {"hl", content_locale().hl},
+            {"gl", content_locale().gl},
             {"platform", "DESKTOP"}}}}},
     };
 
@@ -1726,13 +1841,13 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_playlist_feed_from_browse(
             {"Origin", "https://www.youtube.com"},
         });
     if (!response.has_value() || response->empty()) {
-        this->error_message_ = "재생목록 요청 실패";
+        this->error_message_ = "Could not load the playlist";
         return std::nullopt;
     }
 
     const json root = json::parse(*response, nullptr, false);
     if (root.is_discarded()) {
-        this->error_message_ = "재생목록 응답 파싱 실패";
+        this->error_message_ = "Could not read the playlist";
         return std::nullopt;
     }
 
@@ -1749,14 +1864,14 @@ std::optional<HomeFeed> YouTubeCatalogService::fetch_playlist_feed_from_browse(
     const std::string playlist_title = extract_playlist_title(root);
     feed.kiosk = {
         playlist_id,
-        playlist_title.empty() ? "재생목록" : playlist_title,
+        playlist_title.empty() ? "Playlist" : playlist_title,
     };
 
     const AppSettings settings = SettingsStore::instance().settings();
     std::unordered_set<std::string> seen_ids;
     collect_playlist_items(root, !settings.hide_short_videos, limit, seen_ids, feed.items);
     if (feed.items.empty()) {
-        this->error_message_ = "재생목록 항목을 찾지 못했습니다";
+        this->error_message_ = "No videos found in this playlist";
         return std::nullopt;
     }
     feed.continuation = find_next_page_token(root);
@@ -1779,25 +1894,25 @@ std::optional<CommentPage> YouTubeCatalogService::fetch_comments_from_watch(
     }
 
     if (item.url.empty()) {
-        this->error_message_ = "댓글을 불러올 URL이 없습니다";
+        this->error_message_ = "No comments for this video";
         return std::nullopt;
     }
 
     const auto initial_data = fetch_watch_page_initial_data(this->client_, item.url);
     if (!initial_data.has_value()) {
-        this->error_message_ = "댓글 페이지 초기 데이터 요청 실패";
+        this->error_message_ = "Could not load the comments";
         return std::nullopt;
     }
 
     const std::string continuation_token = extract_comments_continuation_token(*initial_data);
     if (continuation_token.empty()) {
-        this->error_message_ = "댓글 continuation token을 찾지 못했습니다";
+        this->error_message_ = "Comments are turned off";
         return std::nullopt;
     }
 
     const auto page = fetch_comments_page(this->client_, continuation_token, limit);
     if (!page.has_value()) {
-        this->error_message_ = "댓글 목록을 파싱하지 못했습니다";
+        this->error_message_ = "Could not read the comments";
         return std::nullopt;
     }
 
@@ -1826,8 +1941,8 @@ SearchResults YouTubeCatalogService::fetch_search_results(
            {{"clientName", "ANDROID"},
             {"clientVersion", kAndroidClientVersion},
             {"androidSdkVersion", 30},
-            {"hl", "en"},
-            {"gl", "US"}}}}},
+            {"hl", content_locale().hl},
+            {"gl", content_locale().gl}}}}},
     };
 
     const auto response = client_->post(
@@ -1842,20 +1957,20 @@ SearchResults YouTubeCatalogService::fetch_search_results(
         });
 
     if (!response.has_value() || response->empty()) {
-        error_message_ = "유튜브 검색 요청 실패";
+        error_message_ = "Search failed";
         return results;
     }
 
     const json root = json::parse(*response, nullptr, false);
     if (root.is_discarded()) {
-        error_message_ = "유튜브 검색 응답 파싱 실패";
+        error_message_ = "Could not read the search results";
         return results;
     }
 
     std::unordered_set<std::string> seen_ids;
     collect_stream_items(root, allow_short_videos, limit, seen_ids, results.items);
     if (results.items.empty()) {
-        error_message_ = "유튜브 검색 결과가 없습니다";
+        error_message_ = "No results";
         return results;
     }
 
@@ -1869,7 +1984,7 @@ std::optional<HomeFeed> YouTubeCatalogService::get_subscriptions_feed() const {
     const AppSettings settings = SettingsStore::instance().settings();
     return this->fetch_authenticated_browse_feed(
         "FEsubscriptions",
-        "구독 최신 영상",
+        "Subscriptions",
         "https://www.youtube.com/feed/subscriptions",
         24,
         !settings.hide_short_videos);
@@ -1885,12 +2000,12 @@ std::optional<HomeFeed> YouTubeCatalogService::get_related_feed(const StreamItem
 
     const auto detail = this->get_stream_detail(item.url);
     if (!detail.has_value() || detail->related_items.empty()) {
-        this->error_message_ = "관련 영상을 찾지 못했습니다";
+        this->error_message_ = "No related videos";
         return std::nullopt;
     }
 
     HomeFeed feed;
-    feed.kiosk = {"related", "연관 추천"};
+    feed.kiosk = {"related", "Related"};
     feed.items = detail->related_items;
     this->cache_stream_details(feed.items);
     this->related_feed_cache_[cache_key] = feed;
@@ -1905,7 +2020,7 @@ std::optional<HomeFeed> YouTubeCatalogService::get_channel_feed(const StreamItem
 std::optional<HomeFeed> YouTubeCatalogService::get_playlist_feed(const StreamItem& item) const {
     const auto playlist_id = extract_playlist_id_from_url(item.url);
     if (!playlist_id.has_value()) {
-        this->error_message_ = "재생목록 ID가 없는 영상입니다";
+        this->error_message_ = "This video is not in a playlist";
         return std::nullopt;
     }
 
@@ -1918,8 +2033,25 @@ std::optional<CommentPage> YouTubeCatalogService::get_comments(const StreamItem&
 
 std::optional<HomeFeed> YouTubeCatalogService::get_playlist_continuation(const std::string& token) const {
     if (token.empty()) {
-        this->error_message_ = "더 불러올 항목이 없습니다";
+        this->error_message_ = "Nothing more to load";
         return std::nullopt;
+    }
+    if (this->auth_store_->has_oauth_session()) {
+        const auto tv_root = this->fetch_tv_browse({{"continuation", token}});
+        if (!tv_root.has_value()) {
+            return std::nullopt;
+        }
+        HomeFeed tv_feed;
+        std::unordered_set<std::string> tv_seen;
+        collect_stream_items(*tv_root, !SettingsStore::instance().settings().hide_short_videos, 500, tv_seen,
+                             tv_feed.items);
+        tv_feed.continuation = find_next_page_token(*tv_root);
+        if (!tv_feed.items.empty()) {
+            this->cache_stream_details(tv_feed.items);
+            this->error_message_.clear();
+            return tv_feed;
+        }
+        // Not a TV token (e.g. a public playlist opened from search): use WEB below.
     }
 
     const json payload = {
@@ -1928,8 +2060,8 @@ std::optional<HomeFeed> YouTubeCatalogService::get_playlist_continuation(const s
          {{"client",
            {{"clientName", "WEB"},
             {"clientVersion", kWebClientVersion},
-            {"hl", "ko"},
-            {"gl", "KR"},
+            {"hl", content_locale().hl},
+            {"gl", content_locale().gl},
             {"platform", "DESKTOP"}}}}},
     };
     const auto response = this->client_->post(
@@ -1943,13 +2075,13 @@ std::optional<HomeFeed> YouTubeCatalogService::get_playlist_continuation(const s
             {"Origin", "https://www.youtube.com"},
         });
     if (!response.has_value() || response->empty()) {
-        this->error_message_ = "재생목록 요청 실패";
+        this->error_message_ = "Could not load the playlist";
         return std::nullopt;
     }
 
     const json root = json::parse(*response, nullptr, false);
     if (root.is_discarded()) {
-        this->error_message_ = "재생목록 응답 파싱 실패";
+        this->error_message_ = "Could not read the playlist";
         return std::nullopt;
     }
 
@@ -1960,7 +2092,7 @@ std::optional<HomeFeed> YouTubeCatalogService::get_playlist_continuation(const s
     collect_playlist_items(actions, !settings.hide_short_videos, 200, seen_ids, feed.items);
     feed.continuation = find_next_page_token(actions);
     if (feed.items.empty()) {
-        this->error_message_ = "재생목록 항목을 찾지 못했습니다";
+        this->error_message_ = "No videos found in this playlist";
         return std::nullopt;
     }
 
@@ -1975,7 +2107,7 @@ std::optional<HomeFeed> YouTubeCatalogService::get_playlist_continuation(const s
 std::optional<CommentPage> YouTubeCatalogService::get_comments_continuation(const std::string& token) const {
     const auto page = fetch_comments_page(this->client_, token, 50);
     if (!page.has_value()) {
-        this->error_message_ = "댓글 목록을 파싱하지 못했습니다";
+        this->error_message_ = "Could not read the comments";
         return std::nullopt;
     }
     this->error_message_.clear();
