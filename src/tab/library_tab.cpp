@@ -212,7 +212,7 @@ void LibraryTab::openPlaylist(const newpipe::StreamItem& item) {
     if (!allowInitialInput()) {
         return;
     }
-    const auto feed = this->service_.get_playlist_by_id(item.id);
+    const auto feed = this->service_.get_full_playlist(item.id);
     if (!feed.has_value()) {
         brls::Application::notify(this->service_.error_message().empty()
                 ? newpipe::tr("detail/playlist_load_failed")

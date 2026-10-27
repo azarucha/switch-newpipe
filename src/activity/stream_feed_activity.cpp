@@ -96,7 +96,7 @@ void StreamFeedActivity::buildGrid() {
         row->setMarginBottom(22);
 
         for (size_t j = i; j < i + kGridColumns && j < this->items_.size(); j++) {
-            auto* card = new StreamCard();
+            auto* card = new StreamCard(StreamCard::kFullWidth);
             card->setData(this->items_[j]);
             const size_t idx = j;
             card->registerClickAction([this, idx](brls::View*) {

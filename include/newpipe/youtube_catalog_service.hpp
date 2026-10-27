@@ -43,6 +43,8 @@ public:
     // The signed-in user's playlists (Watch later, Liked videos, own playlists).
     std::optional<HomeFeed> get_library_playlists() const;
     std::optional<HomeFeed> get_playlist_by_id(const std::string& playlist_id) const;
+    // All pages of a playlist (up to max_pages continuations).
+    std::optional<HomeFeed> get_full_playlist(const std::string& playlist_id, int max_pages = 20) const;
     std::optional<CommentPage> get_comments_continuation(const std::string& token) const;
     SearchResults search(const std::string& query) const override;
     std::optional<StreamDetail> get_stream_detail(const std::string& url) const override;

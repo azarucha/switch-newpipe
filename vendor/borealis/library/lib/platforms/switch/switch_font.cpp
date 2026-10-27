@@ -51,7 +51,10 @@ void SwitchFontLoader::loadFonts()
         brls::Logger::warning("Cannot find custom font, (Searched at: {})", USER_FONT_PATH);
         rc = plGetSharedFontByType(&font, PlSharedFontType_ChineseSimplified);
         if (R_SUCCEEDED(rc) && Application::loadFontFromMemory(FONT_CHINESE_SIMPLIFIED, font.address, font.size, false))
+        {
+            nvgAddFallbackFontId(vg, Application::getFont(FONT_REGULAR), Application::getFont(FONT_CHINESE_SIMPLIFIED));
             nvgAddFallbackFontId(vg, Application::getFont(FONT_CHINESE_SIMPLIFIED), Application::getFont(FONT_REGULAR));
+        }
         else
             Logger::error("switch: could not load Chinese Simplified shared font: {:#x}", rc);
     }
@@ -59,34 +62,49 @@ void SwitchFontLoader::loadFonts()
     // Simplified Chinese ext
     rc = plGetSharedFontByType(&font, PlSharedFontType_ExtChineseSimplified);
     if (R_SUCCEEDED(rc) && Application::loadFontFromMemory(FONT_CHINESE_SIMPLIFIED_EXT, font.address, font.size, false))
+    {
         nvgAddFallbackFontId(vg, Application::getFont(FONT_CHINESE_SIMPLIFIED), Application::getFont(FONT_CHINESE_SIMPLIFIED_EXT));
+        nvgAddFallbackFontId(vg, Application::getFont(FONT_REGULAR), Application::getFont(FONT_CHINESE_SIMPLIFIED_EXT));
+    }
     else
         Logger::error("switch: could not load Chinese Simplified Extended shared font: {:#x}", rc);
 
     // Traditional Chinese
     rc = plGetSharedFontByType(&font, PlSharedFontType_ChineseTraditional);
     if (R_SUCCEEDED(rc) && Application::loadFontFromMemory(FONT_CHINESE_TRADITIONAL, font.address, font.size, false))
+    {
         nvgAddFallbackFontId(vg, Application::getFont(FONT_CHINESE_SIMPLIFIED), Application::getFont(FONT_CHINESE_TRADITIONAL));
+        nvgAddFallbackFontId(vg, Application::getFont(FONT_REGULAR), Application::getFont(FONT_CHINESE_TRADITIONAL));
+    }
     else
         Logger::error("switch: could not load Chinese Traditional shared font: {:#x}", rc);
 
     // Korean
     rc = plGetSharedFontByType(&font, PlSharedFontType_KO);
     if (R_SUCCEEDED(rc) && Application::loadFontFromMemory(FONT_KOREAN_REGULAR, font.address, font.size, false))
+    {
         nvgAddFallbackFontId(vg, Application::getFont(FONT_CHINESE_SIMPLIFIED), Application::getFont(FONT_KOREAN_REGULAR));
+        nvgAddFallbackFontId(vg, Application::getFont(FONT_REGULAR), Application::getFont(FONT_KOREAN_REGULAR));
+    }
     else
         Logger::error("switch: could not load Korean shared font: {:#x}", rc);
 
     // Extended (symbols)
     rc = plGetSharedFontByType(&font, PlSharedFontType_NintendoExt);
     if (R_SUCCEEDED(rc) && Application::loadFontFromMemory(FONT_SWITCH_ICONS, font.address, font.size, false))
+    {
         nvgAddFallbackFontId(vg, Application::getFont(FONT_CHINESE_SIMPLIFIED), Application::getFont(FONT_SWITCH_ICONS));
+        nvgAddFallbackFontId(vg, Application::getFont(FONT_REGULAR), Application::getFont(FONT_SWITCH_ICONS));
+    }
     else
         Logger::error("switch: could not load Extented shared font: {:#x}", rc);
 
     // Material icons
     if (this->loadMaterialFromResources())
+    {
         nvgAddFallbackFontId(vg, Application::getFont(FONT_CHINESE_SIMPLIFIED), Application::getFont(FONT_MATERIAL_ICONS));
+        nvgAddFallbackFontId(vg, Application::getFont(FONT_REGULAR), Application::getFont(FONT_MATERIAL_ICONS));
+    }
     else
         Logger::error("switch: could not load Material icons font from resources");
 
@@ -98,6 +116,7 @@ void SwitchFontLoader::loadFonts()
             brls::Logger::info("Load emoji font: {}", USER_EMOJI_PATH);
             this->loadFontFromFile("emoji", USER_EMOJI_PATH);
             nvgAddFallbackFontId(vg, Application::getFont(FONT_CHINESE_SIMPLIFIED), Application::getFont("emoji"));
+            nvgAddFallbackFontId(vg, Application::getFont(FONT_REGULAR), Application::getFont("emoji"));
         }
         else
         {

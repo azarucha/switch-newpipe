@@ -22,8 +22,8 @@
 
                 <brls:Image
                     id="detail/thumbnail"
-                    width="100%"
-                    height="100%"
+                    width="480"
+                    height="270"
                     scalingType="fill"
                     cornerRadius="16" />
 
@@ -52,15 +52,14 @@
             </brls:Box>
 
             <brls:Box
-                width="auto"
+                width="690"
                 height="auto"
-                grow="1"
                 axis="column"
                 marginLeft="30">
 
                 <brls:Label
                     id="detail/title"
-                    width="auto"
+                    width="690"
                     height="auto"
                     text=""
                     fontSize="24"
@@ -69,7 +68,7 @@
 
                 <brls:Label
                     id="detail/channel"
-                    width="auto"
+                    width="690"
                     height="auto"
                     text=""
                     marginTop="12"
@@ -79,7 +78,7 @@
 
                 <brls:Label
                     id="detail/meta"
-                    width="auto"
+                    width="690"
                     height="auto"
                     text=""
                     marginTop="4"

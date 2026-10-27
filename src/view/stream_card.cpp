@@ -1,5 +1,7 @@
 #include "view/stream_card.hpp"
 
+#include <cmath>
+
 #include "newpipe/image_loader.hpp"
 #include "newpipe/i18n.hpp"
 
@@ -18,8 +20,22 @@ std::string shorten_title(const std::string& title, size_t max_chars = 64) {
 
 }  // namespace
 
-StreamCard::StreamCard() {
+StreamCard::StreamCard(float width) {
     this->inflateFromXMLRes("xml/views/stream_card.xml");
+    const float inner = width - 12.0f;  // 6 px padding on each side
+    const float thumb_height = std::round(inner * 9.0f / 16.0f);
+    this->setWidth(width);
+    if (thumbBox) {
+        thumbBox->setSize(brls::Size(inner, thumb_height));
+    }
+    if (thumbnail) {
+        thumbnail->setSize(brls::Size(inner, thumb_height));
+    }
+    for (brls::Label* label : {titleLabel.getView(), channelLabel.getView(), metaLabel.getView()}) {
+        if (label) {
+            label->setWidth(inner);
+        }
+    }
 }
 
 void StreamCard::setData(const newpipe::StreamItem& item) {

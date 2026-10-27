@@ -1561,6 +1561,35 @@ std::optional<HomeFeed> YouTubeCatalogService::get_playlist_by_id(const std::str
     return feed;
 }
 
+std::optional<HomeFeed> YouTubeCatalogService::get_full_playlist(
+    const std::string& playlist_id,
+    int max_pages) const {
+    auto feed = this->get_playlist_by_id(playlist_id);
+    if (!feed.has_value()) {
+        return std::nullopt;
+    }
+    std::unordered_set<std::string> seen_ids;
+    for (const auto& item : feed->items) {
+        seen_ids.insert(item.id);
+    }
+    for (int page = 0; page < max_pages && !feed->continuation.empty(); ++page) {
+        const auto next = this->get_playlist_continuation(feed->continuation);
+        if (!next.has_value()) {
+            break;
+        }
+        for (const auto& item : next->items) {
+            if (seen_ids.insert(item.id).second) {
+                feed->items.push_back(item);
+            }
+        }
+        feed->continuation = next->continuation;
+    }
+    this->error_message_.clear();
+    logf("youtube: full playlist id=%s items=%zu more=%d",
+         playlist_id.c_str(), feed->items.size(), feed->continuation.empty() ? 0 : 1);
+    return feed;
+}
+
 std::optional<HomeFeed> YouTubeCatalogService::fetch_tv_browse_feed(
     const std::string& browse_id,
     const std::string& title,

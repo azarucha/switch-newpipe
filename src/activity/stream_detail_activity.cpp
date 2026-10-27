@@ -263,7 +263,7 @@ void StreamDetailActivity::startDownload() {
 }
 
 void StreamDetailActivity::openPlaylistFeed() {
-    const auto feed = this->item_.is_playlist ? this->service_.get_playlist_by_id(this->item_.id)
+    const auto feed = this->item_.is_playlist ? this->service_.get_full_playlist(this->item_.id)
                                               : this->service_.get_playlist_feed(this->item_);
     if (!feed.has_value()) {
         brls::Application::notify(

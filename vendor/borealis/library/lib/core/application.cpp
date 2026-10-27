@@ -1277,7 +1277,10 @@ int Application::getFont(std::string fontName)
 int Application::getDefaultFont()
 {
 #ifdef __SWITCH__
-    static int regular = Application::getFont(FONT_CHINESE_SIMPLIFIED);
+    // Switch-NewPipe: the Latin system font first; with the Chinese font as
+    // primary, Latin-1 letters such as "ü" came from the CJK font and were
+    // spaced like full-width glyphs.
+    static int regular = Application::getFont(FONT_REGULAR);
 #else
     static int regular = Application::getFont(FONT_REGULAR);
 #endif
